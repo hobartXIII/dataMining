@@ -1,0 +1,416 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W2 資料前處理</title>
+  <meta name="description" content="資料探勘 W2：髒資料、屬性類型、集中趨勢與離散程度、盒鬚圖、共變異數與相關係數、卡方檢定">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/fim.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="w2.js"></script>
+</head>
+<body data-chapter="w2">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">W2 · 講義：DM_week2_preprocessing（2026/09/18）</p>
+  <h1>🧹 資料前處理</h1>
+
+  <div class="callout key">
+    <p class="def">資料前處理（Data Preprocessing）是在探勘之前，先把又髒又亂的原始資料整理成可用資料的步驟；口號是 No quality data, no quality mining results。</p>
+    <ul>
+      <li>在 KDD 流程中屬於「資料準備」階段。</li>
+      <li>第一步是「認識你的資料」：資料集型態、每個屬性的類型、數值怎麼分布。</li>
+      <li>工具：基本統計描述（集中趨勢、離散程度、相關性）和圖形（盒鬚圖、直方圖、散佈圖、Q-Q 圖）。</li>
+      <li>四大任務：資料清理、資料整合、資料轉換與離散化、資料縮減。</li>
+    </ul>
+  </div>
+  <div class="callout warn">
+    <p><span class="tag chk">待確認</span>這份講義檔案較大，只讀到第 1～78 頁（到「Major Tasks in Data Preprocessing」為止）。之後的資料清理、整合、轉換、離散化、縮減細節投影片還沒讀到，3.3 節最後一段先放補充內容，請以講義為準。</p>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>真實世界的資料很「髒」：不完整、有雜訊、不一致，甚至被刻意偽裝，所以探勘前一定要先做前處理。</li>
+    <li>前處理先從認識資料開始：資料物件與屬性、屬性類型。</li>
+    <li>用統計量描述資料的中心在哪、散得多開、兩個屬性有沒有關係，再用圖形看分布形狀。</li>
+    <li>最後列出前處理四大任務。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 髒資料的四種來源</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>類型</th><th>白話定義</th><th>講義例子</th></tr>
+      <tr><td>不完整（Incomplete）</td><td>缺值、缺屬性，或只有彙總資料</td><td>name = ""、birthday = 2013/02（缺日）</td></tr>
+      <tr><td>雜訊（Noisy）</td><td>含錯誤或離群值</td><td>age = −10、Salary = −100M</td></tr>
+      <tr><td>不一致（Inconsistent）</td><td>代碼或名稱有出入，常來自不同資料來源</td><td>birthday = 104/01/05 和 2015/1/5（民國 vs. 西元）</td></tr>
+      <tr><td>刻意的（Intentional）</td><td>偽裝的缺失值（Disguised missing data）</td><td>每個人生日都填 2/29</td></tr>
+    </table>
+  </div>
+
+  <h3>2.2 資料集的類型（Data set types）</h3>
+  <ol>
+    <li>紀錄資料（Record Data）：關聯式表格、交易資料（Transaction data）、資料矩陣（Data matrix）、文件資料（詞頻向量 Term-frequency vector）</li>
+    <li>圖與網路（Graphs and Networks）：交通網、全球資訊網、分子結構、社群網路</li>
+    <li>有序資料（Ordered Data）：影片（影像序列）、時間序列（Time-series）、基因序列、音訊訊號</li>
+    <li>空間、影像與多媒體資料（Spatial, image and multimedia Data）：地圖等</li>
+  </ol>
+
+  <h3>2.3 資料物件與屬性</h3>
+  <ul>
+    <li>資料物件（Data object）：代表一個實體或一筆觀察，又叫樣本（Sample）、例子（Example）、實例（Instance）、資料點（Data point），就是表格的<strong>一列</strong>。</li>
+    <li>屬性（Attribute）：描述物件的某個特性，又叫維度（Dimension）、特徵（Feature）、變數（Variable），就是表格的<strong>一欄</strong>。</li>
+  </ul>
+
+  <h3>2.4 屬性的類型</h3>
+  <div class="callout key">
+    <p class="def">屬性類型決定你「能做哪些運算」：選錯運算會得到沒有意義的結果，例如對郵遞區號取平均。</p>
+    <ul>
+      <li>名目 → 只能用眾數；順序 → 可用眾數和中位數；數值 → 平均數、中位數、眾數都能用。</li>
+      <li>講義例子（五條悟）：姓名是名目、等級「特級咒術師」是順序、年齡 28 是數值。</li>
+    </ul>
+  </div>
+  <ul>
+    <li>名目屬性（Nominal）：只是名字或類別，沒有順序，例如髮色、婚姻狀態。又稱類別屬性（Categorical）。</li>
+    <li>二元屬性（Binary）：只有 0 和 1 兩種狀態的名目屬性。
+      <ul>
+        <li>對稱（Symmetric）：兩種狀態同樣重要，例如是否抽菸。</li>
+        <li>不對稱（Asymmetric）：兩種結果重要性不同，例如醫學檢驗陽性（1）比陰性（0）重要。</li>
+      </ul></li>
+    <li>順序屬性（Ordinal）：有意義的順序，但相鄰等級的差距不一定相等，例如飲料大小、成績 A+／A／A−、5 點李克特量表（Likert Scale）。不能定義平均數。</li>
+    <li>數值屬性（Numeric）：可量測或可計數的量。
+      <ul>
+        <li>區間尺度（Interval-scaled）：等差代表等量變化，但零點是任意定的，例如攝氏、華氏溫度。</li>
+        <li>比例尺度（Ratio-scaled）：有真正的零點（代表「完全沒有」），可以說「是幾倍」，例如凱氏溫度。</li>
+        <li>離散（Discrete）：有限或可數無限個值，通常是計數得來，例如學生人數、郵遞區號。二元屬性是離散屬性的特例。</li>
+        <li>連續（Continuous）：理論上可以是區間內任何實數，通常是量測得來，例如身高、體重、時間。</li>
+      </ul></li>
+  </ul>
+
+  <h3>2.5 基本統計描述</h3>
+  <ul>
+    <li>集中趨勢（Central tendency）：資料的中心在哪裡，用平均數、中位數、眾數。</li>
+    <li>離散程度（Dispersion）：資料散得多開，用全距、分位數、四分位距、變異數、標準差。</li>
+    <li>多變數關係：共變異數（Covariance）、相關係數（Correlation coefficient）、卡方檢定（χ² test）。</li>
+  </ul>
+
+  <h3>2.6 平均數、中位數、眾數</h3>
+  <ul>
+    <li>平均數（Mean）：最常用，但對極端值很敏感（講義例子：你和郭台銘的平均薪水）。</li>
+    <li>截尾平均數（Trimmed mean）：砍掉最高與最低的一部分再平均，用來降低極端值影響。</li>
+    <li>加權平均（Weighted average）：每個值乘上代表重要性或次數的權重。</li>
+    <li>中位數（Median）：排序後在正中間的值，偏斜資料用它比較能代表中心。</li>
+    <li>眾數（Mode）：出現最多次的值，名目與數值屬性都能用。可分單峰（Unimodal）、雙峰（Bimodal）、多峰（Multimodal）、無眾數。</li>
+    <li>對稱分布：平均數 = 中位數 = 眾數。<span class="tag add">補充</span>右偏（正偏）時通常平均數 &gt; 中位數 &gt; 眾數；左偏（負偏）時順序相反。講義這頁是圖片，此結論為一般統計常識。</li>
+  </ul>
+
+  <h3>2.7 離散程度的量數</h3>
+  <ul>
+    <li>全距（Range）：最大減最小，好算但對離群值敏感。</li>
+    <li>分位數（Quantiles）：把排序後資料切成大約等大小群組的切點；q-分位數有 q−1 個切點。</li>
+    <li>四分位數（Quartiles）：Q1（第 25 百分位）、Q2（中位數）、Q3（第 75 百分位）；百分位數（Percentiles）是 100-分位數，共 99 個切點。</li>
+    <li>四分位距（Interquartile range, IQR）：Q3 − Q1，比全距不受極端值影響。</li>
+    <li>變異數與標準差：資料離平均數有多遠。標準差小 → 集中在平均附近；標準差大 → 散得開。</li>
+  </ul>
+
+  <h3>2.8 五數概括法與盒鬚圖</h3>
+  <div class="callout key">
+    <p class="def">盒鬚圖（Boxplot）是把五數概括法（最小值、Q1、中位數、Q3、最大值）畫成圖，一眼看出中心、散布和離群值。</p>
+    <ul>
+      <li>盒子從 Q1 到 Q3，盒內線是中位數，盒長就是 IQR。</li>
+      <li>鬚延伸到最極端的「非離群值」，離群值單獨畫點。</li>
+      <li>限制：不同分布可能有相同的五數概括，這時直方圖透露的資訊更多。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-stats">
+    <p class="w-title">描述統計與盒鬚圖</p>
+    <p class="w-desc">輸入一組數字（逗號或空白分隔）。預設是複習題的資料 2, 4, 4, 6, 7, 8, 9, 40：平均 10、中位數 6.5、眾數 4、截尾平均 6.33、Q1 4、Q3 8.5、IQR 4.5，40 是離群值。四分位數用「上下半部取中位數」的算法。</p>
+    <div class="controls">
+      <label style="flex:1 1 260px">資料 <input type="text" id="s-data" value="2, 4, 4, 6, 7, 8, 9, 40" style="flex:1;min-width:0;padding:3px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font:inherit"></label>
+    </div>
+    <div class="controls">
+      <button class="btn" data-set="2, 4, 4, 6, 7, 8, 9, 40">複習題資料</button>
+      <button class="btn" data-set="2, 4, 4, 6, 7, 8, 9">拿掉 40</button>
+      <button class="btn" data-set="2, 4, 4, 6, 7, 8, 9, 400">40 改成 400</button>
+      <button class="btn" data-set="1, 2, 2, 3, 9, 10, 10, 11">雙峰</button>
+    </div>
+    <div class="canvas-wrap"><svg class="plot" id="s-svg" viewBox="0 0 600 120" aria-label="盒鬚圖"></svg></div>
+    <div class="readout" id="s-out"></div>
+  </div>
+
+  <h3>2.9 共變異數與相關係數</h3>
+  <div class="callout key">
+    <p class="def">共變異數（Covariance）看兩個數值屬性是否「一起變動」；相關係數（Correlation coefficient）是把共變異數標準化到 −1～1，才能比較強弱。</p>
+    <ul>
+      <li>共變異數正 → 同方向；負 → 反方向；接近 0 → 沒有明顯的<strong>線性</strong>共同變動。</li>
+      <li>獨立 ⇒ 共變異數 = 0，但共變異數 = 0 不代表獨立（可能有非線性關係）。</li>
+      <li>相關不代表因果。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-cov">
+    <p class="w-title">共變異數與相關係數</p>
+    <p class="w-desc">預設是講義的股票例子：兩支股票一週價格 (2, 5)、(3, 8)、(5, 10)、(4, 11)、(6, 14) → Cov = 4、r ≈ 0.94。拖曳圖上的點或改下面的數字。「y = x²」的例子示範共變異數為 0，兩者卻完全相關。</p>
+    <div class="controls">
+      <button class="btn" data-pts="2,5;3,8;5,10;4,11;6,14">講義股票</button>
+      <button class="btn" data-pts="-2,4;-1,1;0,0;1,1;2,4">y = x²（Cov = 0）</button>
+      <button class="btn" data-pts="1,9;2,7;3,6;4,4;5,2">反向</button>
+    </div>
+    <div class="row">
+      <div class="col" style="flex:1 1 280px"><div class="canvas-wrap"><canvas id="cov-canvas" aria-label="散佈圖"></canvas></div></div>
+      <div class="col" style="flex:1 1 240px"><div class="table-wrap" id="cov-table" style="margin-top:0"></div></div>
+    </div>
+    <div class="readout" id="cov-out"></div>
+  </div>
+
+  <h3>2.10 卡方檢定（χ² test）</h3>
+  <div class="callout key">
+    <p class="def">卡方檢定用來判斷兩個名目（類別）屬性是否有關聯：觀察次數和「若獨立時的期望次數」差越多，χ² 越大，越有理由拒絕「兩者獨立」。</p>
+    <ul>
+      <li>虛無假設 H0：A 與 B 獨立；對立假設 H1：A 與 B 有關聯。</li>
+      <li>只用在類別屬性；數值屬性用相關係數。</li>
+    </ul>
+  </div>
+
+  <h3>2.11 資料的圖形呈現</h3>
+  <ul>
+    <li>盒鬚圖（Boxplot）：看中心、散布與離群值。</li>
+    <li>分位數圖（Quantile plot）：把排序後的每個值對它的累積比例畫出來。</li>
+    <li>Q-Q 圖（Quantile-Quantile plot）：比較兩個分布對應的分位數；點越貼近 y = x，兩分布越像。</li>
+    <li>直方圖（Histogram）：把數值切成連續的區間（Bins）看分布形狀。</li>
+    <li>散佈圖（Scatter plot）：看兩個數值變數的方向、強度、形狀、群聚與離群值。</li>
+    <li>直方圖有時比盒鬚圖透露更多：不同分布可能有相同的五數概括，盒鬚圖長得一樣。</li>
+  </ul>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 用 IQR 找潛在離群值</h3>
+  <ol>
+    <li>把資料由小到大排序</li>
+    <li>找出 Q1 和 Q3</li>
+    <li>計算 IQR = Q3 − Q1</li>
+    <li>計算下界 Q1 − 1.5 × IQR 與上界 Q3 + 1.5 × IQR</li>
+    <li>落在上下界之外的值視為潛在離群值</li>
+  </ol>
+  <ul>
+    <li>優點：不受極端值影響、計算簡單；缺點：只適合單一變數，對多峰分布不一定合理。</li>
+    <li>參數：1.5 倍是慣例，倍數越大，被判為離群的值越少。上面的描述統計元件可以直接試。</li>
+  </ul>
+
+  <h3>3.2 卡方獨立性檢定</h3>
+  <ol>
+    <li>計算每列總和、每欄總和、總筆數 n</li>
+    <li>每一格的期望次數 = 列總和 × 欄總和 ÷ n</li>
+    <li>每一格算 (觀察 − 期望)² ÷ 期望，全部加總得 χ²</li>
+    <li>自由度 = (A 的類別數 − 1) × (B 的類別數 − 1)</li>
+    <li>查表比較臨界值，χ² 大於臨界值就拒絕 H0</li>
+  </ol>
+
+  <div class="widget" id="w-chi">
+    <p class="w-title">2×2 卡方檢定</p>
+    <p class="w-desc">預設是講義的「喜歡科幻小說 vs. 下棋」：250、200、50、1000 → χ² ≈ 507.94、自由度 1（講義先把四格各自四捨五入到小數 2 位再相加，得到 507.93）。改觀察次數，看期望次數和 χ² 怎麼變。</p>
+    <div class="controls">
+      <button class="btn" data-chi="250,200,50,1000">講義：科幻 vs. 下棋</button>
+      <button class="btn" data-chi="60,40,40,60">複習題：200 人</button>
+      <button class="btn" data-chi="90,360,210,840">剛好獨立</button>
+    </div>
+    <div class="table-wrap" id="chi-table"></div>
+    <div class="readout" id="chi-out"></div>
+  </div>
+
+  <h3>3.3 前處理四大任務（講義第 77～78 頁）</h3>
+  <ol>
+    <li>資料清理（Data cleaning）：處理缺值與雜訊、偵測離群值、修正不一致或重複的紀錄</li>
+    <li>資料整合（Data integration）：合併多個來源，解決綱要（Schema）、命名、單位與實體衝突</li>
+    <li>資料轉換與離散化（Data transformation &amp; discretization）：縮放、正規化（Normalization）、特徵建構，以及把連續值轉成區間（此處之後的講義內容未讀取）</li>
+    <li>資料縮減（Data reduction）：講義第 7 頁提到「降低資料維度以利後續分析」</li>
+  </ol>
+  <div class="callout warn">
+    <p><span class="tag add">補充</span>以下為常見考點，講義後半段可能會提到，但目前尚未對照講義：</p>
+    <ul>
+      <li>缺值處理：刪除該筆、填全域常數、填平均數或中位數、填同類別的平均、用模型預測</li>
+      <li>雜訊平滑：分箱（Binning）、迴歸、分群</li>
+      <li>最小最大正規化（Min-max normalization）：\(v' = \frac{v - \min_A}{\max_A - \min_A}(\text{new\_max}_A - \text{new\_min}_A) + \text{new\_min}_A\)</li>
+      <li>Z 分數正規化（Z-score normalization）：\(v' = \frac{v - \bar{A}}{\sigma_A}\)</li>
+      <li>資料縮減：主成分分析（PCA）、屬性子集選擇、抽樣、直方圖、分群</li>
+    </ul>
+  </div>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 平均數與加權平均</h3>
+  $$\bar{x} = \frac{1}{N}\sum_{i=1}^{N} x_i \qquad \bar{x}_w = \frac{\sum_{i=1}^{N} w_i x_i}{\sum_{i=1}^{N} w_i}$$
+  <p>陷阱：一個極端值就能把平均數拉走；加權平均的分母是權重總和，不是 N。</p>
+
+  <h3>4.2 分組資料的中位數（內插法）</h3>
+  $$\text{median} \approx L_1 + \left(\frac{N/2 - (\sum \text{freq})_l}{\text{freq}_{\text{median}}}\right) \times \text{width}$$
+  <ul>
+    <li>\(L_1\)：中位數所在區間的下限；\(\text{width}\)：區間寬度（\(L_2 - L_1\)）</li>
+    <li>\((\sum \text{freq})_l\)：中位數區間「之前」所有區間的次數總和；\(\text{freq}_{\text{median}}\)：中位數區間本身的次數</li>
+    <li>陷阱：累加次數要算到「中位數區間之前」，不能把中位數區間也加進去</li>
+  </ul>
+
+  <h3>4.3 眾數的經驗公式（單峰、輕微偏斜）</h3>
+  $$\text{mean} - \text{mode} \approx 3 \times (\text{mean} - \text{median})$$
+
+  <h3>4.4 變異數與標準差</h3>
+  $$s^2 = \frac{1}{n-1}\sum_{i=1}^{n}(x_i - \bar{x})^2 \qquad \sigma^2 = \frac{1}{N}\sum_{i=1}^{N}(x_i - \mu)^2 = E[X^2] - (E[X])^2$$
+  <p>樣本變異數除 n−1，母體除 N；標準差就是變異數開根號。題目沒講清楚時要先判斷。</p>
+
+  <h3>4.5 共變異數與皮爾森相關係數</h3>
+  $$\text{Cov}(A,B) = \frac{1}{n}\sum_{i=1}^{n}(a_i - \bar{A})(b_i - \bar{B}) = E[AB] - \bar{A}\bar{B} \qquad r_{A,B} = \frac{\text{Cov}(A,B)}{\sigma_A \sigma_B}$$
+  <ul>
+    <li>共變異數的大小受單位影響，不能直接比較強弱，要看相關係數</li>
+    <li>分母的標準差要和共變異數用同一種除法（都除 n 或都除 n−1）</li>
+  </ul>
+  <div class="callout err">
+    <p><span class="tag err">講義勘誤</span>第 58 頁寫「r = 0：independent」並不正確。r = 0 只代表「沒有線性相關」，兩變數仍可能有非線性關係（講義第 56 頁自己也說共變異數為 0 不代表獨立）。正確說法：獨立 ⇒ r = 0，反之不成立。上面元件的「y = x²」就是反例。</p>
+  </div>
+
+  <h3>4.6 卡方</h3>
+  $$e_{ij} = \frac{\text{count}(A = a_i) \times \text{count}(B = b_j)}{n} \qquad \chi^2 = \sum_{i}\sum_{j}\frac{(o_{ij} - e_{ij})^2}{e_{ij}}$$
+  <p>\(o_{ij}\)：觀察次數；\(e_{ij}\)：獨立假設下的期望次數；自由度 \((r-1)(c-1)\)。陷阱：分母是期望值，不是觀察值。</p>
+
+  <h3>4.7 IQR 與分位數圖</h3>
+  $$IQR = Q_3 - Q_1, \quad \text{下界} = Q_1 - 1.5 \times IQR, \quad \text{上界} = Q_3 + 1.5 \times IQR \qquad f_i = \frac{i - 0.5}{N}$$
+  <p>\(f_i\) 表示排序後第 i 個值大約有 \(f_i \times 100\%\) 的資料小於或等於它。</p>
+
+  <h2 id="examples">5. 範例演算</h2>
+  <div class="steps">
+    <p class="steps-title">例一：共變異數與相關係數（講義股票例子）(2, 5)、(3, 8)、(5, 10)、(4, 11)、(6, 14)</p>
+    <ol>
+      <li>平均：\(\bar{X_1} = (2+3+5+4+6)/5 = 4\)，\(\bar{X_2} = (5+8+10+11+14)/5 = 9.6\)</li>
+      <li>各點離差乘積：\((-2)(-4.6) = 9.2\)；\((-1)(-1.6) = 1.6\)；\((1)(0.4) = 0.4\)；\((0)(1.4) = 0\)；\((2)(4.4) = 8.8\)</li>
+      <li>加總 = 20，除以 5 → \(\text{Cov} = 4 &gt; 0\)，兩支股票傾向一起漲</li>
+      <li><span class="tag add">補充</span>\(X_1\) 離差平方和 = 4 + 1 + 1 + 0 + 4 = 10，母體變異數 = 2，\(\sigma \approx 1.414\)</li>
+      <li>\(X_2\) 離差平方和 = 21.16 + 2.56 + 0.16 + 1.96 + 19.36 = 45.2，母體變異數 = 9.04，\(\sigma \approx 3.007\)</li>
+      <li>\(r = 4 \div (1.414 \times 3.007) \approx 0.94\)，強烈正相關</li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：卡方檢定（講義閱讀科幻小說 vs. 下棋，1500 人）</p>
+    <ol>
+      <li>期望值：\(e_{11} = 450 \times 300 \div 1500 = 90\)；\(e_{12} = 450 \times 1200 \div 1500 = 360\)；\(e_{21} = 1050 \times 300 \div 1500 = 210\)；\(e_{22} = 1050 \times 1200 \div 1500 = 840\)</li>
+      <li>各格：\((250-90)^2/90 = 284.44\)；\((50-210)^2/210 = 121.90\)；\((200-360)^2/360 = 71.11\)；\((1000-840)^2/840 = 30.48\)</li>
+      <li>加總 \(\chi^2 \approx 507.93\)，自由度 \((2-1)(2-1) = 1\)</li>
+      <li><span class="tag add">補充</span>自由度 1、顯著水準 0.001 的臨界值約 10.828，507.93 遠大於它 → 拒絕 H0，兩者有關聯</li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例三：分組資料中位數（講義第 46 頁）</p>
+    <ol>
+      <li>總數 N = 3194，N/2 = 1597</li>
+      <li>中位數區間下限 \(L_1 = 21\)，區間寬度 = 50 − 21 = 29</li>
+      <li>中位數區間之前的累計次數 = 950，中位數區間次數 = 1500</li>
+      <li>\(\text{median} \approx 21 + (1597 - 950) \div 1500 \times 29 = 21 + 0.4313 \times 29 \approx 33.51\)
+        <span class="why"><span class="tag chk">待確認</span>講義這頁的次數表是圖片，以上數字取自講義算式，原表請對照投影片。</span></li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>名目 vs. 順序屬性</td><td>名目：只有名字，沒順序</td><td>順序：有順序，但間距不一定相等</td><td>能不能排大小</td></tr>
+      <tr><td>區間 vs. 比例尺度</td><td>區間：零點任意（攝氏）</td><td>比例：有真正的零（凱氏）</td><td>能不能說「是兩倍」</td></tr>
+      <tr><td>離散 vs. 連續</td><td>離散：計數得來，可數</td><td>連續：量測得來，區間內任意實數</td><td>值是「數」出來還是「量」出來</td></tr>
+      <tr><td>對稱 vs. 不對稱二元</td><td>對稱：兩狀態同等重要（是否抽菸）</td><td>不對稱：一種結果比較重要（檢驗陽性）</td><td>0 和 1 是否同等重要</td></tr>
+      <tr><td>平均數 vs. 中位數</td><td>平均數：受極端值影響大</td><td>中位數：偏斜資料較穩健</td><td>資料有沒有極端值或偏斜</td></tr>
+      <tr><td>樣本 vs. 母體變異數</td><td>樣本 s²：除以 n−1</td><td>母體 σ²：除以 N</td><td>資料是抽樣還是全部</td></tr>
+      <tr><td>共變異數 vs. 相關係數</td><td>共變異數：有單位，看方向</td><td>相關係數：無單位，−1～1，看方向和強度</td><td>要不要比較強弱</td></tr>
+      <tr><td>相關係數 vs. 卡方</td><td>相關係數：兩個數值屬性</td><td>卡方：兩個類別屬性</td><td>屬性類型</td></tr>
+      <tr><td>全距 vs. IQR</td><td>全距：最大 − 最小，受極端值影響</td><td>IQR：Q3 − Q1，中間 50% 的範圍</td><td>是否要排除極端值</td></tr>
+      <tr><td>直方圖 vs. 長條圖</td><td>直方圖：數值資料，區間相鄰、順序有意義</td><td>長條圖：類別資料，長條分開、順序可換</td><td>橫軸是數值區間還是類別</td></tr>
+      <tr><td>分位數圖 vs. Q-Q 圖</td><td>分位數圖：一個分布對累積比例</td><td>Q-Q 圖：兩個分布的分位數互相比較</td><td>有幾個分布</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="C">
+    <p class="q">1. 「飲料大小：小、中、大」是哪一種屬性？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 名目</button><button data-opt="B">(B) 二元</button>
+      <button data-opt="C">(C) 順序</button><button data-opt="D">(D) 比例尺度</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。有意義的順序，但「小到中」和「中到大」的差距不一定相等，所以是順序屬性，不能算平均數。</div>
+  </div>
+  <div class="quiz" data-answer="B">
+    <p class="q">2. 會員資料中大家的生日都填 2/29，屬於哪一種髒資料？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 不完整</button><button data-opt="B">(B) 刻意的（偽裝缺失值）</button>
+      <button data-opt="C">(C) 不一致</button><button data-opt="D">(D) 雜訊</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。值看起來有填，其實是不想填或系統預設，這是偽裝的缺失值（Disguised missing data）。</div>
+  </div>
+  <div class="quiz" data-answer="D">
+    <p class="q">3. 想知道「性別」與「是否購買某商品」有沒有關係，應該用？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 共變異數</button><button data-opt="B">(B) 皮爾森相關係數</button>
+      <button data-opt="C">(C) 盒鬚圖</button><button data-opt="D">(D) 卡方檢定</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。兩個都是類別屬性，用卡方檢定；共變異數和相關係數是給數值屬性用的。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 溫度用攝氏表示是哪一種尺度？為什麼不能說 20°C 是 10°C 的兩倍？</p>
+    <details class="answer"><summary>看解答</summary><div>區間尺度。攝氏的 0 度是人為定的，不代表「沒有溫度」，所以比例沒有意義；要說倍數得用有真正零點的凱氏溫度。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 共變異數為 0 是否代表兩個變數獨立？</p>
+    <details class="answer"><summary>看解答</summary><div>不代表。共變異數只衡量線性的共同變動，例如 y = x² 在對稱區間上共變異數為 0，但兩者完全相關。只有「獨立 ⇒ 共變異數為 0」成立。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 為什麼兩組資料的盒鬚圖一樣，直方圖卻可能差很多？</p>
+    <details class="answer"><summary>看解答</summary><div>盒鬚圖只用五數概括，不同分布（例如單峰和雙峰）可能有相同的五個數；直方圖畫出完整形狀，看得出峰的數量與位置。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <div class="quiz">
+    <p class="q">1. 資料：2, 4, 4, 6, 7, 8, 9, 40。求平均數、中位數、眾數、去掉最大和最小值後的截尾平均數。</p>
+    <details class="answer"><summary>看解答</summary><div>總和 = 80，平均 = 10；中位數 = (6 + 7) ÷ 2 = 6.5；眾數 = 4；截尾平均 = (4+4+6+7+8+9) ÷ 6 = 38 ÷ 6 ≈ 6.33。可見 40 把平均數拉高很多。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 承上題，用「上下半部取中位數」的方式求 Q1、Q3、IQR，並判斷有沒有離群值。</p>
+    <details class="answer"><summary>看解答</summary><div>下半部 2, 4, 4, 6 → Q1 = 4；上半部 7, 8, 9, 40 → Q3 = 8.5；IQR = 4.5。下界 = 4 − 6.75 = −2.75，上界 = 8.5 + 6.75 = 15.25，所以 40 是離群值。<span class="tag add">補充</span>四分位數有好幾種算法，答案可能略有差異，考試以老師的算法為準。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 某調查 200 人，A（是／否）與 B（是／否）的列聯表為：是是 60、是否 40、否是 40、否否 60。計算 χ²，並在顯著水準 0.05（臨界值 3.841）與 0.001（臨界值 10.828）下各做結論。</p>
+    <details class="answer"><summary>看解答</summary><div>列與欄總和都是 100，期望值每格 = 100 × 100 ÷ 200 = 50。每格 (10)² ÷ 50 = 2，共四格 χ² = 8，自由度 1。8 &gt; 3.841 → 在 0.05 下拒絕 H0（有關聯）；8 &lt; 10.828 → 在 0.001 下不能拒絕 H0。可以用上面的卡方元件驗算。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 你拿到一份會員資料，生日欄位有一大堆「1 月 1 日」，你會怎麼判斷與處理？</p>
+    <details class="answer"><summary>看解答</summary><div>這很可能是「刻意的」偽裝缺失值。先看該日期的比例是否遠高於正常的約 1/365，若是，就把它當缺值處理（標記為缺失、用其他方式填補或排除）。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>髒資料四成因：不完整、雜訊、不一致、刻意（偽裝缺值）。</li>
+    <li>資料物件 = 列（樣本），屬性 = 欄（特徵）。</li>
+    <li>屬性類型：名目、二元（對稱／不對稱）、順序、數值（區間／比例、離散／連續）。</li>
+    <li>名目只能用眾數；順序可用眾數和中位數；數值三者都能用。</li>
+    <li>平均數怕極端值，偏斜資料用中位數或截尾平均。</li>
+    <li>樣本變異數除 n−1，母體除 N；標準差是變異數開根號。</li>
+    <li>共變異數看方向，相關係數看方向和強度；獨立 ⇒ 0，反之不成立；相關 ≠ 因果。</li>
+    <li>卡方用在類別屬性：期望值 = 列總 × 欄總 ÷ n，自由度 (r−1)(c−1)。</li>
+    <li>離群值：低於 Q1 − 1.5 IQR 或高於 Q3 + 1.5 IQR；五數概括 = 最小、Q1、中位、Q3、最大。</li>
+    <li>前處理四大任務：清理、整合、轉換與離散化、縮減。</li>
+  </ol>
+
+  <footer>講義：DM_week2_preprocessing | iLearning 3.pdf（2026/09/18）</footer>
+</main>
+</div>
+</body>
+</html>

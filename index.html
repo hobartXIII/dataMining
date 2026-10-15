@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>資料探勘互動筆記</title>
+  <meta name="description" content="國立中興大學資工系「資料探勘」課程的互動式網頁筆記">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="assets/style.css">
+  <script defer src="assets/common.js"></script>
+</head>
+<body data-chapter="home">
+  <div class="layout" style="grid-template-columns:minmax(0,1fr)">
+    <main style="max-width:960px">
+      <section class="hero">
+        <p class="eyebrow">國立中興大學資工系 · 授課老師：林鼎崴 · 週五 18:20–21:00</p>
+        <h1>資料探勘 互動式筆記</h1>
+        <p class="lead">依講義逐週整理，把演算法做成可以操作的互動元件：改門檻、按下一步，看 Apriori 怎麼剪枝、FP-tree 怎麼長出來。</p>
+        <div id="countdown" class="countdown"></div>
+      </section>
+
+      <h2 style="margin-top:1.2em">各週筆記</h2>
+      <div id="chapter-cards" class="cards"></div>
+      <p class="muted">第 3 週（中秋節）與第 5 週（國慶日）停課，所以沒有 W3、W5。</p>
+
+      <h2>使用說明</h2>
+      <ul>
+        <li>每週都分成 8 段：本章摘要 → 核心概念 → 演算法與方法 → 公式整理 → 範例演算 → 易混淆處 → 複習問題 → 一頁速記，和文字筆記的段落順序相同。</li>
+        <li>有 <strong>▶</strong> 標記的方塊是互動元件，預設值都是講義上的原例子。</li>
+        <li>綠色框是重點：第一句直接講「這是什麼」。</li>
+        <li><span class="tag add">補充</span>：講義沒寫、但有助於理解的內容。</li>
+        <li><span class="tag chk">待確認</span>：講義文字無法擷取（多為圖片），或講義本身前後不一致；請對照原始投影片或詢問老師、助教。</li>
+        <li><span class="tag err">講義勘誤</span>：講義本身的錯字或觀念錯誤，網頁顯示正確版本。</li>
+      </ul>
+
+      <h2>課程資訊</h2>
+      <div class="table-wrap">
+        <table>
+          <tr><th>項目</th><th class="num">比例</th><th>說明</th></tr>
+          <tr><td>考試</td><td class="num">25%</td><td>2026-11-27</td></tr>
+          <tr><td>作業</td><td class="num">60%</td><td>三份各 20%：Weka（11/06）、LibSVM（11/27）、Kaggle Practice（12/18）</td></tr>
+          <tr><td>論文導讀</td><td class="num">15%</td><td>錄影，12/25</td></tr>
+        </table>
+      </div>
+      <ul>
+        <li>教科書：Han, Pei, Tong《Data Mining: Concepts and Techniques》4/e</li>
+        <li>參考書：Tan, Steinbach, Karpatne, Kumar《Introduction to Data Mining》2/e</li>
+      </ul>
+
+      <footer>課程網頁筆記 · 講義版權屬授課老師所有，本站只放整理後的筆記。</footer>
+    </main>
+  </div>
+</body>
+</html>

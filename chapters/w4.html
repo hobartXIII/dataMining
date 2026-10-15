@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W4 頻繁樣式與 Apriori</title>
+  <meta name="description" content="資料探勘 W4：頻繁項目集、關聯規則、支持度與信賴度、閉合與極大頻繁項目集、Apriori 演算法">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/fim.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="w4.js"></script>
+</head>
+<body data-chapter="w4">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">W4 · 講義：DM_week4（2026/10/02）· 作業 1（Weka）就是這個單元</p>
+  <h1>🛒 頻繁樣式探勘與 Apriori</h1>
+
+  <div class="callout key">
+    <p class="def">頻繁樣式探勘是找出資料中常常一起出現的項目組合，再從這些組合產生「X ⇒ Y」的關聯規則；Apriori 是逐層找頻繁項目集的經典演算法。</p>
+    <ul>
+      <li>問題情境是購物籃分析（Market Basket Analysis）：哪些商品常被一起買？</li>
+      <li>用支持度（Support）篩出頻繁項目集，再用信賴度（Confidence）篩出強規則（Strong Rule）。</li>
+      <li>用閉合（Closed）與極大（Maximal）頻繁項目集壓縮結果。</li>
+      <li>Apriori（1994, VLDB）利用「頻繁項目集的子集必頻繁」的性質，逐層產生候選並剪枝。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>頻繁樣式（Frequent Pattern）是資料中常常出現的組合，本章聚焦在頻繁項目集（Frequent Itemset）與關聯規則（Association Rule）。</li>
+    <li>購物籃分析的結果可用來做組合包、推薦、促銷與貨架擺放。</li>
+    <li>在 KDD 流程中屬於「資料探勘」步驟，是描述型探勘。W6 會講 Apriori 的改良與 FP-Growth。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 頻繁樣式的種類</h3>
+  <ul>
+    <li>頻繁項目集（Frequent itemset）：常在同一筆交易一起出現的項目，例如 {Milk, Bread}。</li>
+    <li>序列樣式（Sequential pattern）：常依特定順序發生的事件（講義用繪本《如果你給老鼠吃餅乾》比喻）。</li>
+    <li>結構樣式（Structured pattern）：常出現的子結構，例如子圖、子樹。</li>
+  </ul>
+
+  <h3>2.2 關聯規則（Association Rule）</h3>
+  <div class="callout key">
+    <p class="def">關聯規則 \(X \Rightarrow Y\) 的意思是：含有 X 的交易，也傾向含有 Y；它描述「共同出現」，不是因果關係。</p>
+    <ul>
+      <li>X 是前項（Antecedent），Y 是後項（Consequent），要求 X、Y 非空且 \(X \cap Y = \varnothing\)。</li>
+      <li>判斷是不是合法規則（第 13 頁）：X、Y 都是全部項目 I 的非空子集，而且不相交。例如 I = {a, b, c, d, e} 時，{a, c} ⇒ {d} 兩個條件都成立。</li>
+      <li>可用在交易資料，也可用在關聯式資料，例如 {Age = 20–29} ⇒ {Buys = Laptop}。</li>
+      <li>講義的例子：{Milk, Bread} ⇒ {Butter}。</li>
+    </ul>
+  </div>
+
+  <h3>2.3 交易資料庫與 k-項目集</h3>
+  <ul>
+    <li>交易資料庫（Transactional Database, TDB）：由多筆交易組成，每筆有唯一的交易編號（TID）和一組項目。有些應用還會記錄每個項目的數量。</li>
+    <li>項目集（Itemset）：一組項目；k-項目集（k-itemset）是含 k 個項目的項目集，例如 {a, b, c} 是 3-項目集。</li>
+  </ul>
+
+  <h3>2.4 支持度與信賴度</h3>
+  <div class="callout key">
+    <p class="def">支持度回答「這個組合在整個資料庫裡有多常見」；信賴度回答「看到 X 時，有多大把握也看到 Y」。</p>
+    <ul>
+      <li>絕對支持度（支持計數，Support count）：含有 X 的交易筆數；相對支持度：含有 X 的交易比例。</li>
+      <li>頻繁項目集：支持度不小於最小支持度門檻（min_sup，σ）的項目集。</li>
+      <li>強規則：同時滿足 min_sup 與最小信賴度 min_conf，即「夠常見也夠可靠」。</li>
+      <li>限制：兩者只顯示一起出現的頻率，不衡量相關性或因果；要看正負相關可用提升度（Lift，見第 4 節）。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-rule4">
+    <p class="w-title">支持度與信賴度（講義 4 筆交易）</p>
+    <p class="w-desc">預設是講義第 17 頁的 {c, d} ⇒ {a}：支持度 50%、信賴度 2/3 ≈ 66.7%。按下面的按鈕可切換到第 21 頁的五條規則。</p>
+    <div id="rule4-box"></div>
+    <div class="controls">
+      <button class="btn" data-rule="a|d">{a} ⇒ {d}</button>
+      <button class="btn" data-rule="d|a">{d} ⇒ {a}</button>
+      <button class="btn" data-rule="c,d|a">{c, d} ⇒ {a}</button>
+      <button class="btn" data-rule="a,c|d">{a, c} ⇒ {d}</button>
+      <button class="btn" data-rule="b|a,c">{b} ⇒ {a, c}</button>
+    </div>
+  </div>
+
+  <h3>2.5 為什麼先找頻繁項目集？</h3>
+  <ul>
+    <li>因為 \(\text{support}(X \Rightarrow Y) = \text{support}(X \cup Y)\)，規則要滿足 min_sup，\(X \cup Y\) 就必須是頻繁項目集。</li>
+    <li>所以每條強規則一定來自某個頻繁項目集：先找出全部頻繁項目集，再把每個項目集拆成前項與後項即可。</li>
+    <li>難處：min_sup 低時頻繁項目集會爆量，而且頻繁項目集的子集都頻繁，結果大量重複。這就是要壓縮成閉合或極大的原因。</li>
+  </ul>
+
+  <h3>2.6 閉合與極大頻繁項目集</h3>
+  <div class="callout key">
+    <p class="def">閉合頻繁項目集是「沒有任何真超集的支持度跟它一樣」的頻繁項目集；極大頻繁項目集是「沒有任何真超集是頻繁的」的頻繁項目集。</p>
+    <ul>
+      <li>閉合保留精確的支持度資訊，是無損壓縮：若 X 不閉合，就有更大的 Y 支持度相同，回報 Y 就能推回 X 的支持度。</li>
+      <li>極大壓縮得最多，但只知道哪些頻繁、不知道子集的精確支持度，是有損壓縮。</li>
+      <li>三者關係：極大 ⊆ 閉合 ⊆ 頻繁。</li>
+    </ul>
+  </div>
+  <div class="callout err">
+    <p><span class="tag err">講義勘誤</span></p>
+    <ul>
+      <li>第 29 頁閉合的條件 a 寫成「A is a proper superset of B」，方向反了，應為「B 是 A 的真超集」；同頁「there exists a larger itemset B ⊂ A」也應為 B ⊃ A。正確定義：不存在 B ⊃ A 使 sup(B) = sup(A)。</li>
+      <li>第 32 頁極大的條件 b 寫成「B is not frequent」，應為「B is frequent」。正確定義：不存在頻繁的 B ⊃ A（同頁下方的數學式是對的）。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-lattice">
+    <p class="w-title">閉合與極大頻繁項目集（格子圖）</p>
+    <p class="w-desc">講義 4 筆交易、項目 a～d 的 15 個項目集（e 只出現 1 次，不頻繁，略過）。每格顯示支持計數；點一格看它為什麼是（或不是）閉合、極大。預設 min_sup count = 2 → 頻繁 11、閉合 5、極大 2。</p>
+    <div class="controls">
+      <label>min_sup count <input type="range" id="lat-min" min="1" max="4" step="1" value="2"> <span class="val" data-for="lat-min"></span></label>
+    </div>
+    <div class="legend">
+      <span><i style="background:var(--surface-2);border-color:var(--border)"></i>不頻繁</span>
+      <span><i style="background:color-mix(in srgb,var(--c-b) 14%,var(--surface));border-color:var(--c-b)"></i>頻繁（不閉合）</span>
+      <span><i style="background:color-mix(in srgb,var(--c-c) 26%,var(--surface));border-color:var(--c-c)"></i>閉合（不極大）</span>
+      <span><i style="background:color-mix(in srgb,var(--pos) 26%,var(--surface));border-color:var(--pos)"></i>極大（也一定閉合）</span>
+    </div>
+    <div class="canvas-wrap"><svg class="lattice" id="lat-svg" aria-label="項目集格子圖"></svg></div>
+    <div class="readout" id="lat-out"></div>
+  </div>
+  <div class="callout err">
+    <p><span class="tag err">講義勘誤</span><span class="tag chk">待確認</span>第 33～35 頁寫「頻繁 10 個、不頻繁 5 個」，極大是 {b, c}、{b, d}、{a, c, d}，和這份資料不符：{b, c, d} 出現在第 2、3 筆，計數 2，是頻繁的（第 11 頁也列出 {b, c, d}: 50%）。依資料計算，正確結果是頻繁 11 個、閉合 5 個（{d}、{a, d}、{c, d}、{a, c, d}、{b, c, d}）、極大 2 個（{a, c, d}、{b, c, d}）。也可能第 31 頁的表和第 9 頁不同，請對照投影片。另外第 31 頁把第 2 筆寫成「b, c, d」（第 9 頁是「b, c, d, e」），因為 e 不頻繁，對結果沒有影響。講義第 36～37 頁另有一個 5 項目的例子，結果是閉合 9 個、極大 4 個。</p>
+  </div>
+
+  <h3>2.7 Apriori 性質（Apriori Property）</h3>
+  <div class="callout key">
+    <p class="def">Apriori 性質：頻繁項目集的所有非空子集都一定頻繁；反過來說，不頻繁項目集的所有超集都不頻繁。</p>
+    <ul>
+      <li>例子：{beer, diaper, nuts} 頻繁，則 {beer, diaper} 也頻繁，因為含前者的交易一定含後者。</li>
+      <li>反單調性：\(\text{sup}(X \cup \{A\}) \le \text{sup}(X) &lt; \text{min\_sup}\)。</li>
+      <li>剪枝的依據：只要候選的某個子集不頻繁，就不必掃資料庫計算它的支持度。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-prune">
+    <p class="w-title">項目集格子圖與剪枝（第 55～56 頁）</p>
+    <p class="w-desc">5 個項目 A～E 的 31 個項目集。講義的例子是 {A, B} 不頻繁，它往下的 7 個超集全部剪掉。點任何一格把它設為不頻繁，看哪些超集跟著被剪掉；再點一次取消。</p>
+    <div class="controls"><button class="btn" id="prune-reset">回到講義例子 {A, B}</button><button class="btn" id="prune-clear">全部清除</button></div>
+    <div class="canvas-wrap"><svg class="lattice" id="prune-svg" aria-label="5 項目格子圖"></svg></div>
+    <div class="readout" id="prune-out"></div>
+  </div>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 關聯規則探勘兩階段</h3>
+  <ol>
+    <li>找出所有頻繁項目集（例如用 Apriori）</li>
+    <li>從頻繁項目集產生規則，只保留信賴度 ≥ min_conf 的</li>
+  </ol>
+
+  <h3>3.2 Apriori 演算法</h3>
+  <div class="callout key">
+    <p class="def">Apriori 是逐層（level-wise）找頻繁項目集的演算法：用頻繁 k-項目集 \(L_k\) 產生 (k+1)-候選，剪掉不可能頻繁的，再掃資料庫計數。</p>
+    <ul>
+      <li>每一層兩步：連接（Join）\(C_{k+1} = L_k \bowtie L_k\)，剪枝（Prune）刪掉有不頻繁 k-子集的候選。</li>
+      <li>剪枝在掃描資料庫<strong>之前</strong>，不用計數就能刪。</li>
+      <li>重複到 \(L_{k+1} = \varnothing\) 為止。</li>
+    </ul>
+  </div>
+  <ol>
+    <li>掃描資料庫，計算每個項目的支持計數，得到頻繁 1-項目集 \(L_1\)</li>
+    <li>連接（Join）：只有「前 k−1 個項目相同、最後一個項目較小者在前」的兩個項目集才能連接</li>
+    <li>剪枝（Prune）：候選只要有一個 k-子集不在 \(L_k\) 裡，就先刪掉，不用計數</li>
+    <li>掃描資料庫，計算剩下候選的支持計數，保留 ≥ min_sup 的成為 \(L_{k+1}\)</li>
+    <li>重複步驟 2～4，直到 \(L_{k+1} = \varnothing\)，輸出所有 \(L_k\) 的聯集</li>
+  </ol>
+  <pre class="code">Apriori(D, min_sup):
+    L1 = { 支持計數 >= min_sup 的 1-項目集 }
+    k = 1
+    while Lk 不是空集合:
+        Ck+1 = Join(Lk)                    # 前 k-1 項相同才連接
+        for c in Ck+1:
+            if c 的某個 k-子集不在 Lk:
+                從 Ck+1 刪除 c              # Prune
+        for t in D:                        # 掃描一次資料庫
+            for c in Ck+1 且 c ⊆ t:
+                c.count += 1
+        Lk+1 = { c in Ck+1 | c.count >= min_sup }
+        k = k + 1
+    return L1 ∪ L2 ∪ ... ∪ Lk</pre>
+  <ul>
+    <li>為什麼要字典序（Lexicographic order）：確保同一個候選只會被產生一次。</li>
+    <li>\(L_{k+1} \subseteq C_{k+1}\)：頻繁 (k+1)-項目集一定來自候選集。直接對每個候選計數也可以，但候選多時掃描成本很高，所以先剪枝再計數（第 50 頁）。</li>
+    <li>連接例子：{a, b, c, d} ⋈ {a, b, c, e} → {a, b, c, d, e}；{a, b, c} 和 {a, b, d} 可連接成 {a, b, c, d}；前 k−1 項不同就不能連接；前 k−1 項相同但 \(l_1[k] &gt; l_2[k]\)（順序反了）也不連接，因為同一組在順序正確時已經連接過一次。</li>
+    <li>時間複雜度 <span class="tag add">補充</span>：最壞情況候選數是指數級（d 個項目最多 \(2^d - 1\) 個項目集）；若最長頻繁項目集長度為 k，大約需要掃描資料庫 k+1 次。</li>
+    <li>優點：觀念簡單、實作容易，利用剪枝大量減少候選。缺點：需要多次掃描資料庫；min_sup 低時候選數量爆炸。</li>
+    <li>參數：min_sup 越低 → 頻繁項目集越多、跑越久；min_sup 太高 → 可能漏掉有趣但少見的組合。min_conf 只影響規則產生階段，不影響頻繁項目集。</li>
+  </ul>
+
+  <div class="widget" id="w-apriori">
+    <p class="w-title">Apriori 逐層執行</p>
+    <p class="w-desc">預設是講義第 51 頁的 9 筆交易、min_sup count = 2：\(L_1\) 5 個、\(L_2\) 6 個、\(L_3\) = {a, b, c}、{a, b, e}，\(L_4 = \varnothing\)。紅色的是剪枝刪掉的候選（括號內是不在 \(L_k\) 的子集），劃掉的是計數後不夠門檻的。按「下一層」一層一層看。</p>
+    <div class="controls">
+      <label>資料 <select id="ap-data"><option value="tdb9">講義 9 筆交易（第 51 頁）</option><option value="tdb4">講義 4 筆交易（第 9 頁）</option><option value="practice">複習題 5 筆交易</option></select></label>
+      <label>min_sup count <input type="number" id="ap-min" min="1" max="9" value="2"></label>
+    </div>
+    <div class="table-wrap" id="ap-db"></div>
+    <div class="controls"><button class="btn primary" id="ap-next">下一層 ▶</button><button class="btn" id="ap-all">全部展開</button><button class="btn" id="ap-reset">重來</button><span class="muted" id="ap-count"></span></div>
+    <div class="readout" id="ap-out"></div>
+  </div>
+
+  <h3>3.3 從頻繁項目集產生規則</h3>
+  <ol>
+    <li>對每個大小 ≥ 2 的頻繁項目集 l，列出所有非空真子集 s</li>
+    <li>產生候選規則 \(s \Rightarrow (l - s)\)</li>
+    <li>計算信賴度 = support_count(l) ÷ support_count(s)</li>
+    <li>信賴度 ≥ min_conf 就保留</li>
+  </ol>
+  <ul>
+    <li>一個 k-項目集可產生 \(2^k - 2\) 條候選規則（例如 {a, b, c} 有 6 條）。</li>
+    <li>不需要再檢查支持度，因為 l 本來就頻繁。頻繁項目集及其支持計數可存在雜湊表裡，查分母很快。</li>
+  </ul>
+
+  <div class="widget" id="w-rules">
+    <p class="w-title">產生強規則</p>
+    <p class="w-desc">接續上面 Apriori 元件的資料與 min_sup。預設 9 筆交易、min_conf = 60% → 強規則 10 條，與講義第 69 頁一致。</p>
+    <div class="controls">
+      <label>min_conf <input type="range" id="ru-conf" min="0" max="100" step="5" value="60"> <span class="val" data-for="ru-conf"></span>%</label>
+      <label><input type="checkbox" id="ru-only"> 只顯示強規則</label>
+    </div>
+    <div class="table-wrap" id="ru-table"></div>
+    <div class="readout" id="ru-out"></div>
+  </div>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 支持度</h3>
+  $$\text{support}(X) = \frac{|\{T \in D : X \subseteq T\}|}{|D|}, \qquad \text{support}(X \Rightarrow Y) = \text{support}(X \cup Y)$$
+  <p>分子就是支持計數。陷阱：\(X \cup Y\) 是「項目的聯集」，意思是「同時含有 X 和 Y 的交易」，不是「含 X 或含 Y」。</p>
+  <h3>4.2 信賴度</h3>
+  $$\text{confidence}(X \Rightarrow Y) = P(Y \mid X) = \frac{\text{support\_count}(X \cup Y)}{\text{support\_count}(X)}$$
+  <p>陷阱：分母是前項 X；講義的「66%」其實是 2/3 ≈ 66.7%，若 min_conf = 66% 還算通過，若 min_conf = 67% 就不通過。</p>
+  <h3>4.3 反單調性、閉合與極大</h3>
+  $$X \subseteq Y \Rightarrow \text{sup}(Y) \le \text{sup}(X)$$
+  $$X \text{ closed} \iff X \text{ frequent} \wedge \nexists\, Y \supset X : \text{sup}(Y) = \text{sup}(X)$$
+  $$X \text{ maximal} \iff X \text{ frequent} \wedge \nexists\, Y \supset X : Y \text{ frequent}$$
+  <h3>4.4 提升度 <span class="tag add">補充</span></h3>
+  $$\text{lift}(X \Rightarrow Y) = \frac{\text{confidence}(X \Rightarrow Y)}{\text{support}(Y)} = \frac{P(X \cup Y)}{P(X)P(Y)}$$
+  <p>大於 1：正相關；等於 1：獨立；小於 1：負相關。講義第 4 頁只提到名稱，細節應該會在後續課程說明。</p>
+
+  <h2 id="examples">5. 範例演算</h2>
+  <div class="steps">
+    <p class="steps-title">例一：支持度與信賴度（講義 4 筆交易：a,c,d / b,c,d,e / a,b,c,d / a,d，min_sup = 50%、min_conf = 66%）</p>
+    <ol>
+      <li>頻繁 1-項目集：{a} 75%、{b} 50%、{c} 75%、{d} 100%（{e} 25% 不頻繁）</li>
+      <li>頻繁 2-項目集：{a, c} 50%、{a, d} 75%、{b, c} 50%、{b, d} 50%、{c, d} 75%（{a, b} 25% 不頻繁）</li>
+      <li>頻繁 3-項目集：{a, c, d} 50%、{b, c, d} 50%；沒有頻繁 4-項目集</li>
+      <li>{a} ⇒ {d}：支持度 = sup({a, d}) = 3/4 = 75%；信賴度 = 3/3 = 100%</li>
+      <li>{d} ⇒ {a}：支持度 75%；信賴度 = 3/4 = 75%</li>
+      <li>{a, c} ⇒ {d}：支持度 = 2/4 = 50%；信賴度 = 2/2 = 100%</li>
+      <li>{c, d} ⇒ {a}：支持度 50%；信賴度 = 2/3 ≈ 66.7%</li>
+      <li>{b} ⇒ {a, c}：支持度 = sup({a, b, c}) = 1/4 = 25%；信賴度 = 1/2 = 50% → 兩個門檻都不過
+        <span class="why"><span class="tag chk">待確認</span>講義第 19～23 頁的項目字母是數學字型，文字擷取後無法辨識，這條是依數字反推的：支持度 25%、信賴度 50% 的規則符合 {b} ⇒ {a, c}。若講義實際寫的是 {d} ⇒ {a, c}，正確值應為 s = 50%、c = 50%。</span></li>
+      <li>強規則是第 4、5、6、7 條</li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：Apriori 完整流程（講義 9 筆交易，min_sup count = 2）</p>
+    <ol>
+      <li>第一次掃描得 \(C_1\)：a:6、b:7、c:6、d:2、e:2、f:1 → \(L_1\) = {a}, {b}, {c}, {d}, {e}（f 只有 1 次被淘汰）</li>
+      <li>連接得 \(C_2\) 共 10 個；2-項目集的子集都是頻繁 1-項目集，沒有可剪枝的</li>
+      <li>掃描計數：ab:4、ac:4、ad:1、ae:2、bc:4、bd:2、be:2、cd:0、ce:1、de:0 → \(L_2\) = {a, b}, {a, c}, {a, e}, {b, c}, {b, d}, {b, e}</li>
+      <li>連接得 \(C_3\)：abc、abe、ace、bcd、bce、bde</li>
+      <li>剪枝：ace 含 ce、bcd 含 cd、bce 含 ce、bde 含 de，這些 2-子集都不在 \(L_2\)，刪掉；剩 abc、abe
+        <span class="why">四個候選不用掃資料庫就被刪掉了，這就是 Apriori 性質省下的工夫。</span></li>
+      <li>掃描計數：abc = 2（008、009）、abe = 2（001、008）→ \(L_3\) = {a, b, c}, {a, b, e}</li>
+      <li>連接得 \(C_4\) = {a, b, c, e}；剪枝時發現 ace、bce 不在 \(L_3\) → 刪掉，\(L_4 = \varnothing\)，結束</li>
+      <li>產生規則（min_conf = 60%）：來自 \(L_2\) 的 a⇒b、a⇒c、c⇒a、c⇒b（4/6）、e⇒a、d⇒b、e⇒b（2/2）通過；b⇒a、b⇒c（4/7）、a⇒e（2/6）、b⇒d、b⇒e（2/7）不通過</li>
+      <li>來自 {a, b, c}：六條信賴度 2/6、2/7、2/6、2/4、2/4、2/4，全部低於 60%</li>
+      <li>來自 {a, b, e}：e⇒ab、ae⇒b、be⇒a（2/2）通過；a⇒be、b⇒ae、ab⇒e 不通過 → 強規則共 10 條，與講義第 69 頁一致</li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>支持度 vs. 信賴度</td><td>支持度：\(X \cup Y\) 在全部交易的比例</td><td>信賴度：含 X 的交易中也含 Y 的比例</td><td>分母是 |D| 還是 sup(X)</td></tr>
+      <tr><td>絕對 vs. 相對支持度</td><td>絕對：筆數（如 3）</td><td>相對：比例（如 75%）</td><td>min_sup 給的是整數還是百分比</td></tr>
+      <tr><td>頻繁項目集 vs. 強規則</td><td>頻繁項目集：只看支持度</td><td>強規則：支持度與信賴度都要過</td><td>是項目集還是有方向的規則</td></tr>
+      <tr><td>閉合 vs. 極大</td><td>閉合：沒有「支持度相同」的超集，無損</td><td>極大：沒有「頻繁」的超集，有損</td><td>超集是比支持度還是比是否頻繁</td></tr>
+      <tr><td>連接 vs. 剪枝</td><td>連接：用 Lk 產生 Ck+1</td><td>剪枝：刪掉有不頻繁 k-子集的候選</td><td>剪枝在掃描資料庫「之前」，不用計數</td></tr>
+      <tr><td>X⇒Y vs. Y⇒X</td><td>支持度相同</td><td>信賴度通常不同</td><td>信賴度分母跟著前項變</td></tr>
+      <tr><td>共同出現 vs. 因果</td><td>關聯規則：只說一起出現</td><td>因果：一個導致另一個</td><td>規則不能直接解讀成因果</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="C">
+    <p class="q">1. Apriori 中，候選 {a, c, e} 會被剪枝的原因是？（\(L_2\) = {a, b}, {a, c}, {a, e}, {b, c}, {b, d}, {b, e}）</p>
+    <div class="opts">
+      <button data-opt="A">(A) 支持計數小於 min_sup</button><button data-opt="B">(B) {a, c} 不在 L2</button>
+      <button data-opt="C">(C) {c, e} 不在 L2</button><button data-opt="D">(D) 它無法由連接產生</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。{a, c, e} 由 {a, c} ⋈ {a, e} 產生，但它的子集 {c, e} 不在 \(L_2\)，所以在計數之前就被剪掉。</div>
+  </div>
+  <div class="quiz" data-answer="B">
+    <p class="q">2. 哪一種壓縮能還原所有頻繁項目集的精確支持度？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 極大頻繁項目集</button><button data-opt="B">(B) 閉合頻繁項目集</button>
+      <button data-opt="C">(C) 兩者都可以</button><button data-opt="D">(D) 兩者都不行</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。閉合是無損壓縮；極大只能還原「哪些頻繁」，不知道子集的精確支持度。</div>
+  </div>
+  <div class="quiz" data-answer="D">
+    <p class="q">3. 一個頻繁 4-項目集最多能產生幾條候選規則？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 4</button><button data-opt="B">(B) 6</button>
+      <button data-opt="C">(C) 12</button><button data-opt="D">(D) 14</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。\(2^4 - 2 = 14\)：扣掉空集合和自己，其他每個子集都可以當前項。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 用自己的話解釋 Apriori 性質，並說明它如何幫助剪枝。</p>
+    <details class="answer"><summary>看解答</summary><div>頻繁項目集的子集一定頻繁；反過來說，只要有一個子集不頻繁，整個項目集就不可能頻繁。所以候選只要有一個 k-子集不在 Lk，就可以在掃描資料庫前直接刪掉。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. Apriori 連接步驟為什麼要求「前 k−1 個項目相同」且項目依字典序排列？</p>
+    <details class="answer"><summary>看解答</summary><div>確保每個 (k+1)-候選只由一組「共享前 k−1 項」的項目集產生一次，不會重複。而且任何頻繁 (k+1)-項目集去掉最後一項或倒數第二項得到的兩個 k-子集都在 Lk，所以不會漏。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 一條規則支持度與信賴度都很高，就代表 X 導致 Y 嗎？</p>
+    <details class="answer"><summary>看解答</summary><div>不代表。支持度與信賴度只說明一起出現的頻率，不是因果。例如 Y 本來就很常見時，信賴度自然就高，甚至可能是負相關（<span class="tag add">補充</span>可用 Lift 檢查）。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <p>下列題目共用這份資料：T1 = {A, B, C}、T2 = {A, C}、T3 = {A, D}、T4 = {B, C, E}、T5 = {A, B, C, E}。可以把上面 Apriori 元件的資料切到「複習題 5 筆交易」驗算。</p>
+  <div class="quiz">
+    <p class="q">1. 計算 {B} ⇒ {C} 與 {C} ⇒ {B} 的支持度與信賴度。</p>
+    <details class="answer"><summary>看解答</summary><div>B 出現在 T1、T4、T5（3 筆），C 出現在 T1、T2、T4、T5（4 筆），BC 同時出現在 T1、T4、T5（3 筆）。{B}⇒{C}：支持度 60%，信賴度 3/3 = 100%。{C}⇒{B}：支持度 60%，信賴度 3/4 = 75%。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 以 min_sup count = 2 執行 Apriori，列出每一層的 C 與 L；再以 min_conf = 70% 列出由 {B, C, E} 產生的強規則。</p>
+    <details class="answer"><summary>看解答</summary><div>C1：A:4、B:3、C:4、D:1、E:2 → L1 = {A, B, C, E}。C2：AB:2、AC:3、AE:1、BC:3、BE:2、CE:2 → L2 = {AB, AC, BC, BE, CE}。連接得 C3 = {ABC, BCE}，子集都在 L2 不用剪；計數 ABC:2、BCE:2 → L3 = {ABC, BCE}。ABC 與 BCE 前兩項不同無法連接，C4 = ∅。由 {B, C, E}：B⇒CE 2/3 ✗、C⇒BE 2/4 ✗、E⇒BC 2/2 ✓、BC⇒E 2/3 ✗、BE⇒C 2/2 ✓、CE⇒B 2/2 ✓。強規則：E⇒BC、BE⇒C、CE⇒B。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 承上題，找出所有閉合頻繁項目集與極大頻繁項目集。</p>
+    <details class="answer"><summary>看解答</summary><div>頻繁：A:4、B:3、C:4、E:2、AB:2、AC:3、BC:3、BE:2、CE:2、ABC:2、BCE:2。閉合：A、C、AC、BC、ABC、BCE，共 6 個（B 因 BC:3、E 因 BE:2、AB 因 ABC:2、BE 與 CE 因 BCE:2 都不閉合）。極大：ABC、BCE，共 2 個。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 用 Apriori 跑大型量販店資料，min_sup 設太低導致跑不完、結果超過百萬筆，可以怎麼調整？</p>
+    <details class="answer"><summary>看解答</summary><div>提高 min_sup 減少候選；只回報閉合或極大頻繁項目集來壓縮結果；或改用 W6 的改良法（Hash-based、Transaction reduction、Partitioning、Sampling）或 FP-Growth。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>關聯規則 X⇒Y：X、Y 非空且不相交，描述共同出現不是因果。</li>
+    <li>支持度 = sup(X ∪ Y) / |D|；信賴度 = sup(X ∪ Y) / sup(X)。</li>
+    <li>強規則 = 同時過 min_sup 與 min_conf。</li>
+    <li>兩階段：先找頻繁項目集，再產生規則；k-項目集可產生 2^k − 2 條規則。</li>
+    <li>Apriori 性質：頻繁的子集必頻繁；不頻繁的超集必不頻繁。</li>
+    <li>Apriori 每層：連接（前 k−1 項相同）→ 剪枝（查 k-子集）→ 掃描計數 → 留下 ≥ min_sup。</li>
+    <li>剪枝發生在計數之前，節省掃描資料庫的成本。</li>
+    <li>閉合：沒有同支持度的超集（無損）；極大：沒有頻繁的超集（有損）；極大 ⊆ 閉合 ⊆ 頻繁。</li>
+    <li>算信賴度時分母是前項，注意 2/3 = 66.7% 與門檻的比較。</li>
+    <li>Apriori 缺點：多次掃描、候選爆炸；W6：Hash、Transaction reduction、Partitioning、Sampling、FP-Growth。</li>
+  </ol>
+
+  <footer>講義：DM_week4 | iLearning 3.pdf（2026/10/02，共 70 頁）</footer>
+</main>
+</div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+# 講義有著作權，不放進 repo
+*.pdf
+*.pptx
+slides/
+
+# 含雲端硬碟與 Notion 連結，只留在本機
+CLAUDE.md
+
+# 系統檔
+.DS_Store
+Thumbs.db
+desktop.ini

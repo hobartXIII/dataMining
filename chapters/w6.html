@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W6 Apriori 改良與 FP-Growth</title>
+  <meta name="description" content="資料探勘 W6：DHP 雜湊、交易縮減、分割法、抽樣與負邊界、FP-tree 與 FP-Growth">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/fim.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="w6.js"></script>
+</head>
+<body data-chapter="w6">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">W6 · 講義：DM_week6（2026/10/16）· 第 5 週國慶日停課，本週接續 W4</p>
+  <h1>🌳 Apriori 改良與 FP-Growth</h1>
+
+  <div class="callout key">
+    <p class="def">本週處理 Apriori 太慢的問題：一是在 Apriori 架構內優化（DHP 雜湊、交易縮減、分割、抽樣），二是改用不產生候選的 FP-Growth。</p>
+    <ul>
+      <li>Apriori 慢在兩件事：候選集太大（尤其是 \(C_2\)），以及每一層都要重掃整個資料庫。</li>
+      <li>FP-Growth（2000, SIGMOD）把資料庫壓成 FP-tree，用「樣式成長」直接長出頻繁項目集，只掃描資料庫兩次。</li>
+      <li>Apriori 是廣度優先（BFS，一層一層找），FP-Growth 是深度優先（DFS）＋ 分而治之（Divide-and-Conquer）。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>講義前半段用和 W4 相同的 9 筆交易複習 Apriori，結果和 W4 一樣：\(L_1\) 5 個、\(L_2\) 6 個、\(L_3\) = {a, b, c}、{a, b, e}。</li>
+    <li>改良方向一：在 Apriori 內優化，包括雜湊（Hash-based, DHP）、交易縮減（Transaction reduction）、分割（Partitioning）、抽樣（Sampling）。</li>
+    <li>改良方向二：跳出 Apriori，改用 FP-Growth，完全不產生候選。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 為什麼 Apriori 很貴？</h3>
+  <ul>
+    <li>候選集可能非常大，特別是 \(C_2\)：若 \(|L_1| = n\)，則 \(|C_2| = \binom{n}{2}\)，而且 2-項目集沒辦法用 Apriori 性質剪枝（它的子集都是頻繁 1-項目集）。</li>
+    <li>支持度計數每一層都要掃描整個大型資料庫。</li>
+    <li>所以改良的關鍵是：(1) 縮小初始候選集，尤其是 \(C_2\)；(2) 減少要掃描的交易量。</li>
+  </ul>
+
+  <h3>2.2 支持度計數的兩種方式（第 11～12 頁）</h3>
+  <ul>
+    <li>候選驅動（Candidate-driven）：對每個候選，掃過所有交易看它有沒有出現。</li>
+    <li>交易驅動（Transaction-driven）：對每筆交易，列出它包含的候選子集，各加 1。例如交易 001 = {a, b, e} 會讓 {a, b}、{a, e}、{b, e} 各 +1。</li>
+    <li>交易驅動只要掃資料庫一次就能算完這一層所有候選，是實務上的做法；DHP 的雜湊也是在這個掃描過程中順便做的。</li>
+  </ul>
+
+  <h3>2.3 樣式成長（Pattern Growth）的直覺（第 31～32 頁）</h3>
+  <ul>
+    <li>對一個頻繁樣式 α，它的所有延伸（超集）只可能出現在「含有 α 的交易」裡，所以找 α 的延伸時，只要看這些交易就好。</li>
+    <li>例：交易 100 {A, B, D}、200 {B, C}、300 {A, B, C}、400 {A, C}，min_sup = 2。找 {B} 的延伸只要看 100、200、300，可能的延伸有 {A, B}、{B, D}、{B, C}、{A, B, D}、{A, B, C}，其中頻繁的是 {A, B}:2、{B, C}:2。</li>
+    <li>FP-Growth 把這個「只看相關交易」的局部性遞迴地套用下去。</li>
+  </ul>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 雜湊法 DHP（Direct Hashing and Pruning, 1995）</h3>
+  <div class="callout key">
+    <p class="def">DHP 是在掃描資料庫時順便把每筆交易的 (k+1)-子集雜湊進桶子並計數，桶子計數小於 min_sup 的候選一定不頻繁，直接從 \(C_{k+1}\) 刪掉。</p>
+    <ul>
+      <li>名稱：Direct Hashing and Pruning，直接雜湊並剪枝。講義標註為 PCY Algorithm；<span class="tag add">補充</span>DHP 是 Park、Chen、Yu 在 1995 年 SIGMOD 發表的，跟 PCY 演算法是同一批作者，概念相同。</li>
+      <li>為什麼正確：桶子計數 = 落在這個桶子的所有項目集支持度總和 ≥ 其中任一項目集的支持度。桶子不夠，裡面每一個都不夠。</li>
+      <li>注意：桶子夠了「不保證」頻繁，因為可能是碰撞（collision）。這只是必要條件，還是要實際計數。</li>
+      <li>效果：主要用來縮小 \(C_2\)，並配合交易縮減，讓之後的掃描變少。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-dhp">
+    <p class="w-title">DHP 雜湊表</p>
+    <p class="w-desc">講義第 17～18 頁：4 筆交易，\(h(\{x, y\}) = (\text{order}(x) \times 10 + \text{order}(y)) \bmod 7\)，A～E 的 order 是 1～5。預設 min_sup = 2 → 雜湊表 3, 1, 2, 0, 3, 1, 3，\(C_2\) 從 6 個濾成 4 個。點一個桶子看裡面裝了哪些 2-子集。</p>
+    <div class="controls">
+      <label>min_sup count <input type="range" id="dhp-min" min="1" max="4" step="1" value="2"> <span class="val" data-for="dhp-min"></span></label>
+    </div>
+    <div class="table-wrap" id="dhp-tx"></div>
+    <div class="buckets" id="dhp-buckets"></div>
+    <div class="readout" id="dhp-out"></div>
+  </div>
+
+  <h3>3.2 交易縮減（Transaction Reduction）</h3>
+  <div class="callout key">
+    <p class="def">交易縮減是把不可能再貢獻頻繁項目集的交易（或項目）從下一輪掃描中拿掉：不包含任何頻繁 k-項目集的交易，不可能包含任何頻繁 (k+1)-項目集。</p>
+    <ul>
+      <li>項目層級（DHP 的做法，第 19 頁）：從 k 進到 k+1 時，項目如果出現在少於 k 個「該交易所含的頻繁 k-項目集」裡，就丟掉這個項目。</li>
+      <li>為什麼是 k：若項目 x 屬於某個頻繁 (k+1)-項目集 S，S 有 k 個包含 x 的 k-子集，而且都頻繁，所以 x 至少出現在 k 個頻繁 k-項目集裡。</li>
+      <li>項目被丟光（或剩不到 k+1 個項目）的交易就整筆移除。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-tr">
+    <p class="w-title">交易縮減（接續 DHP，k = 2 → 3）</p>
+    <p class="w-desc">用上面算出的 \(L_2\)，數每個項目出現在幾個「這筆交易所含的頻繁 2-項目集」裡，少於 2 次就丟掉。預設結果：100、400 整筆移除，200、300 只剩 {B, C, E}，第三輪只要掃 2 筆就得到 \(L_3\) = {B, C, E}:2。</p>
+    <div class="table-wrap" id="tr-table"></div>
+    <div class="readout" id="tr-out"></div>
+  </div>
+  <div class="callout warn">
+    <p><span class="tag chk">待確認</span>講義第 19 頁和第 20 頁的條件文字不太一樣：第 19 頁寫「Retain only items participating in \(L_2\)」，第 20 頁寫「participating in candidates in \(C_2\)」。這個例子的 \(C_2\) 和 \(L_2\) 剛好相同，所以結果一樣。原始 DHP 論文是以候選集計算的，考試時以老師的說法為準。TID 200、400 的縮減結果是 <span class="tag add">補充</span>，講義只示範了 300 和 100。</p>
+  </div>
+
+  <h3>3.3 分割法（Partitioning, 1995 VLDB）</h3>
+  <div class="callout key">
+    <p class="def">分割法是把資料庫切成放得進記憶體的幾塊，各自找局部頻繁項目集，再用全部局部結果當候選掃一次全資料庫；只需要掃描兩次。</p>
+    <ul>
+      <li>講義稱作 SON Algorithm。<span class="tag add">補充</span>原論文是 Savasere、Omiecinski、Navathe〈An Efficient Algorithm for Mining Association Rules in Large Databases〉，三位作者的姓氏縮寫就是 SON。</li>
+      <li>關鍵性質：全域頻繁的項目集，一定在至少一個分割中是局部頻繁的。<span class="tag add">補充</span>反證：若它在每個分割都不頻繁，各分割的計數都小於該分割的局部門檻，加總後也小於全域門檻。</li>
+      <li>局部頻繁不代表全域頻繁，所以第二次掃描不能省。</li>
+    </ul>
+  </div>
+  <ol>
+    <li>第一次掃描：每個分割用局部最小支持度（= min_sup 比例 × 分割大小）找出局部頻繁項目集（原論文用 itemset → TID 清單的資料結構）。</li>
+    <li>第二次掃描：所有分割的局部頻繁項目集取聯集作為全域候選，掃描整個資料庫算實際支持度。</li>
+  </ol>
+
+  <h3>3.4 抽樣法（Sampling, 1996）</h3>
+  <div class="callout key">
+    <p class="def">抽樣法是先在記憶體裡的隨機樣本上找頻繁項目集，再掃一次全資料庫驗證；用一點準確度換效率，最好情況只要掃描一次。</p>
+    <ul>
+      <li>出處：〈Sampling Large Databases for Association Rules〉，1996。<span class="tag add">補充</span>作者是 Toivonen，VLDB 1996。</li>
+      <li>負邊界（Negative Border）：不在 \(L_S\)、但所有真子集都在 \(L_S\) 的項目集，也就是剛好卡在頻繁邊緣外面的那一圈。</li>
+      <li>負邊界中有項目集在全資料庫上其實是頻繁的 → 抽樣漏掉了東西（它的超集也可能頻繁），抽樣失敗，要再掃描一次。</li>
+    </ul>
+  </div>
+  <ol>
+    <li>從資料庫 D 隨機抽一個樣本 S，大小以能放進主記憶體為準。</li>
+    <li>在 S 上找頻繁項目集 \(L_S\)。<span class="tag add">補充</span>實務上會用比 min_sup 更低的門檻，減少漏掉的機會。</li>
+    <li>掃描整個 D 一次，驗證 \(L_S\) 和它的負邊界的實際支持度。</li>
+    <li>如果有頻繁項目集沒找到，就要再掃描 D 第二次。</li>
+  </ol>
+
+  <div class="widget" id="w-nb">
+    <p class="w-title">負邊界</p>
+    <p class="w-desc">點格子選出樣本上的頻繁項目集 \(L_S\)（藍色），綠色粗框是自動算出的負邊界。預設是講義第 26 頁：\(L_S\) = {A}、{C}、{D}、{C, D} → 負邊界 = {B}、{A, C}、{A, D}。</p>
+    <div class="controls">
+      <button class="btn" id="nb-lec">講義例子</button>
+      <button class="btn" id="nb-q">複習題（A～E）</button>
+      <button class="btn" id="nb-clear">清除</button>
+    </div>
+    <div class="canvas-wrap"><svg class="lattice" id="nb-svg" aria-label="負邊界格子圖"></svg></div>
+    <div class="readout" id="nb-out"></div>
+  </div>
+
+  <h3>3.5 FP-Growth（Han, Pei, Yin, 2000 SIGMOD）</h3>
+  <div class="callout key">
+    <p class="def">FP-Growth 是不產生候選就找出全部頻繁項目集的演算法：先把資料庫壓成一棵 FP-tree，再從每個後綴項目的「條件 FP-tree」遞迴長出頻繁樣式。</p>
+    <ul>
+      <li>名稱：Frequent-Pattern Growth，頻繁樣式成長。</li>
+      <li>只掃描資料庫兩次：第一次算 F-list，第二次建樹。</li>
+      <li>共用前綴的交易在樹上走同一條路徑，計數疊加，所以樹通常比資料庫小很多。</li>
+      <li>挖掘時每一步都只看含有後綴的那部分資料（條件樣式基底），越挖越小。</li>
+    </ul>
+  </div>
+  <h4>步驟一：建 FP-tree</h4>
+  <ol>
+    <li>第一次掃描：找出頻繁 1-項目集，依支持計數由大到小排序，得到 F-list。</li>
+    <li>第二次掃描：每筆交易刪掉不頻繁的項目，剩下的依 F-list 順序排好。</li>
+    <li>從根節點 null{} 開始依序插入；路徑上已有相同前綴（prefix）就共用節點、計數 +1，沒有才開新分支。</li>
+    <li>標頭表（Header table）記錄每個項目的總計數，並用節點鏈（node-link）把樹中同一項目的所有節點串起來。</li>
+  </ol>
+
+  <div class="widget" id="w-fptree">
+    <p class="w-title">逐筆建 FP-tree</p>
+    <p class="w-desc">預設是講義第 34～45 頁的 9 筆交易、min_sup = 2，F-list = b-a-c-d-e。按「插入下一筆」看每筆交易走哪條路，藍框是剛走過的節點；在標頭表點一個項目，可以看它的節點鏈（黃色虛線）。</p>
+    <div class="controls">
+      <label>資料 <select id="ft-data"><option value="tdb9">講義 9 筆交易</option><option value="textbook">課本範例（第 46 頁）</option><option value="practice">複習題 5 筆交易</option></select></label>
+      <label>min_sup count <input type="number" id="ft-min" min="1" max="9" value="2"></label>
+    </div>
+    <div class="readout" id="ft-flist" style="margin-top:0"></div>
+    <div class="row">
+      <div class="col" style="flex:1 1 300px"><div class="table-wrap" id="ft-table"></div></div>
+      <div class="col" style="flex:0 1 200px"><div class="table-wrap" id="ft-header"></div></div>
+    </div>
+    <div class="controls"><button class="btn primary" id="ft-next">插入下一筆 ▶</button><button class="btn" id="ft-all">全部插入</button><button class="btn" id="ft-reset">重來</button><span class="muted" id="ft-count"></span></div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="tree" id="ft-svg" aria-label="FP-tree"></svg></div>
+    <div class="readout" id="ft-out"></div>
+  </div>
+
+  <h4>步驟二：探勘 FP-tree（FP-Growth）</h4>
+  <ol>
+    <li>從 F-list 中計數最小的項目（最末端）開始，當作初始後綴樣式（suffix pattern）α。</li>
+    <li>沿著 α 的節點鏈，收集每個 α 節點往根走的前綴路徑，<strong>計數以 α 節點的計數為準</strong>，得到條件樣式基底（Conditional Pattern Base）。</li>
+    <li>把條件樣式基底當成一個小資料庫，刪掉不頻繁的項目，建出條件 FP-tree（Conditional FP-tree）。</li>
+    <li>對條件 FP-tree 遞迴執行步驟 1～3，產生的樣式都要再接上後綴 α。</li>
+  </ol>
+  <ul>
+    <li>單一路徑捷徑（第 55 頁）：條件 FP-tree 只有一條路徑時，不用再遞迴，直接列出路徑上節點的所有組合 β，再各自和後綴取聯集。支持度取組合中各節點計數的最小值。</li>
+    <li>為什麼要依頻率排序 <span class="tag add">補充</span>：高頻項目放前面，越多交易能共用同一段前綴，樹就越小。</li>
+  </ul>
+  <pre class="code">FP-Growth(Tree, α):                     # 一開始 Tree = 整棵 FP-tree，α = 空集合
+    if Tree 只有一條路徑 P:
+        for P 上節點的每個非空組合 β:
+            輸出 β ∪ α，支持度 = β 中節點計數的最小值
+    else:
+        for Tree 標頭表中的每個項目 ai（從計數最小的開始）:
+            β = ai ∪ α，輸出 β，支持度 = ai 的總計數
+            沿 ai 的節點鏈收集前綴路徑 → β 的條件樣式基底
+            刪除基底中不頻繁的項目 → 建 β 的條件 FP-tree Treeβ
+            if Treeβ 不是空的:
+                FP-Growth(Treeβ, β)</pre>
+  <div class="callout warn">
+    <p><span class="tag chk">待確認</span>講義第 63、64 頁的 FP-tree 與 FP-growth 演算法虛擬碼是圖片，文字擷取不到。上面的虛擬碼是 <span class="tag add">補充</span>依原論文的寫法整理，請對照原始投影片。</p>
+  </div>
+
+  <div class="widget" id="w-fpg">
+    <p class="w-title">FP-Growth 探勘</p>
+    <p class="w-desc">點一個後綴項目，看它的條件樣式基底、條件 FP-tree 和長出來的頻繁樣式。預設 9 筆交易、min_sup = 2：從 e 開始，全部合計 13 個頻繁項目集，和 Apriori 的結果相同。</p>
+    <div class="controls">
+      <label>資料 <select id="fg-data"><option value="tdb9">講義 9 筆交易</option><option value="textbook">課本範例（min_sup = 3）</option><option value="practice">複習題 5 筆交易</option></select></label>
+      <label>min_sup count <input type="number" id="fg-min" min="1" max="9" value="2"></label>
+    </div>
+    <div class="controls"><span class="muted">後綴：</span><div class="seg" id="fg-items"></div></div>
+    <div class="row">
+      <div class="col" style="flex:1 1 280px"><div class="readout" id="fg-out" style="margin-top:0"></div></div>
+      <div class="col" style="flex:1 1 220px"><p class="muted" style="margin:0 0 4px;font-size:.88rem">條件 FP-tree</p><div class="canvas-wrap" style="padding:6px"><svg class="tree" id="fg-svg" aria-label="條件 FP-tree"></svg></div></div>
+    </div>
+    <div class="table-wrap" id="fg-table"></div>
+    <div class="readout" id="fg-sum"></div>
+  </div>
+
+  <ul>
+    <li>優點 <span class="tag add">補充</span>：只掃描資料庫兩次；不產生候選；FP-tree 會壓縮共用前綴，資料越密集壓得越多；每次遞迴的條件資料庫越來越小。</li>
+    <li>缺點 <span class="tag add">補充</span>：FP-tree 不一定放得進記憶體；資料很稀疏時共用前綴少，壓縮效果差；遞迴建很多條件樹也有額外成本。</li>
+  </ul>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 \(C_2\) 的大小</h3>
+  $$|C_2| = \binom{n}{2} = \frac{n(n-1)}{2}, \qquad n = |L_1|$$
+  <p>例：\(|L_1| = 1000\) 時，\(|C_2|\) 接近 50 萬個，這就是 DHP 要處理的瓶頸。</p>
+  <h3>4.2 DHP 雜湊函數（講義範例）</h3>
+  $$h(\{x, y\}) = (\text{order}(x) \times 10 + \text{order}(y)) \bmod 7$$
+  <p>order 是項目的編號：A = 1、B = 2、C = 3、D = 4、E = 5。剪枝條件：\(\text{bucket\_count}(h(X)) &lt; \text{min\_sup} \Rightarrow X \notin L_2\)。</p>
+  <h3>4.3 分割法的局部門檻</h3>
+  $$\text{local\_min\_sup\_count}(P_i) = \text{min\_sup} \times |P_i|$$
+  <h3>4.4 負邊界</h3>
+  $$NB(L_S) = \{X \mid X \notin L_S,\ \forall Y \subset X : Y \in L_S\}$$
+  <h3>4.5 FP-Growth 單一路徑的支持度</h3>
+  $$\text{sup}(\beta \cup \alpha) = \min_{v \in \beta} \text{count}(v)$$
+
+  <h2 id="examples">5. 範例演算</h2>
+  <div class="steps">
+    <p class="steps-title">例一：DHP 雜湊剪枝（講義第 17～18 頁，min_sup = 2）</p>
+    <ol>
+      <li>算桶子編號：例如 AC = (1×10 + 3) mod 7 = 13 mod 7 = 6；BE = 25 mod 7 = 4；CE = 35 mod 7 = 0</li>
+      <li>第一次掃描時同時做兩件事：算 1-項目集的支持度，也把所有 2-子集丟進桶子</li>
+      <li>桶子計數：桶 0 = 3（AD、CE、CE）、桶 1 = 1（AE）、桶 2 = 2（BC×2）、桶 3 = 0、桶 4 = 3（BE×3）、桶 5 = 1（AB）、桶 6 = 3（AC、CD、AC）</li>
+      <li>\(L_1\)：A:2、B:3、C:3、E:3（D:1 被淘汰）；\(L_1 \bowtie L_1\) 得 6 個候選 AB、AC、AE、BC、BE、CE</li>
+      <li>AB 在桶 5（計數 1）、AE 在桶 1（計數 1），都 &lt; 2，刪掉。剩下 \(C_2\) = {AC, BC, BE, CE}，只要計數 4 個
+        <span class="why">實際計數：AC:2、BC:2、BE:3、CE:2，全部頻繁，\(L_2\) = {AC, BC, BE, CE}。</span></li>
+      <li>碰撞的例子：桶 0 的計數 3 是 AD:1 + CE:2 加起來的；如果 AD 是候選，它會通過雜湊過濾，但實際並不頻繁</li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：探勘 FP-tree（9 筆交易，F-list = b-a-c-d-e）</p>
+    <ol>
+      <li>後綴 e：兩個 e 節點，前綴 {b, a}:1、{b, a, c}:1。基底中 b:2、a:2、c:1，c 刪掉，條件 FP-tree 是單一路徑 b:2 → a:2</li>
+      <li>單一路徑捷徑：組合 {b}、{a}、{b, a}，接上 e 得 {b, e}:2、{a, e}:2、{b, a, e}:2，再加上 {e}:2 本身</li>
+      <li>後綴 d：前綴 {b, a}:1、{b}:1 → b:2、a:1 → 條件樹 ⟨b:2⟩ → {d}:2、{b, d}:2</li>
+      <li>後綴 c：前綴 {b, a}:2、{b}:2、{a}:2 → 條件樹不是單一路徑（b:4 → a:2，另一條 a:2），要遞迴：{a, c} 的基底是 {b:2} → {b, a, c}:2；{b, c} 的基底是空的
+        <span class="why">c 的頻繁樣式：{c}:6、{b, c}:4、{a, c}:4、{b, a, c}:2。</span></li>
+      <li>後綴 a：前綴 {b}:4 → {a}:6、{b, a}:4；後綴 b：上面就是根 → {b}:7</li>
+      <li>全部合計 13 個頻繁項目集，與 Apriori 的 \(L_1\)（5）+ \(L_2\)（6）+ \(L_3\)（2）完全相同</li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例三：課本經典範例（講義第 46～67 頁，min_sup = 3）</p>
+    <ol>
+      <li>頻繁 1-項目集：f:4、c:4、a:3、b:3、m:3、p:3，F-list = f-c-a-b-m-p（f 與 c 同為 4，講義把 f 排前面）</li>
+      <li>排序後：100 → f, c, a, m, p；200 → f, c, a, b, m；300 → f, b；400 → c, b, p；500 → f, c, a, m, p</li>
+      <li>各項目的條件資料庫（講義第 66 頁）：c → f:3；a → fc:3；b → fca:1、f:1、c:1；m → fca:2、fcab:1；p → fcam:2、cb:1</li>
+      <li>p → 只有 c:3 頻繁 → {c, p}:3</li>
+      <li>m → f:3、c:3、a:3（b:1 刪掉），條件 FP-tree 是單一路徑 f:3 → c:3 → a:3</li>
+      <li>b → f:2、c:2、a:1，都不到 3 → 空（ɸ），b 只有自己</li>
+      <li>a → fc:3 → {f, a}、{c, a}、{f, c, a}，都是 3；c → f:3 → {f, c}:3</li>
+      <li><span class="tag add">補充</span>m 的單一路徑 f-c-a 有 7 種組合，接上 m 得 {f, m}、{c, m}、{a, m}、{f, c, m}、{f, a, m}、{c, a, m}、{f, c, a, m}，支持度都是 3
+        <span class="why"><span class="tag chk">待確認</span>講義文字只擷取到第 67 頁左右（m 的條件 FP-tree），這一步和下一步是依課本的標準答案補上的。</span></li>
+      <li><span class="tag add">補充</span>全部頻繁樣式：6 個單項 + cp + m 的 7 個 + fa、ca、fca + fc，共 18 個</li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>Apriori vs. FP-Growth</td><td>Apriori：BFS、產生候選、掃描 k+1 次</td><td>FP-Growth：DFS、不產生候選、掃描 2 次</td><td>有沒有候選集、掃描次數</td></tr>
+      <tr><td>候選驅動 vs. 交易驅動計數</td><td>候選驅動：每個候選掃全部交易</td><td>交易驅動：每筆交易列出它含的候選</td><td>外層迴圈是候選還是交易</td></tr>
+      <tr><td>雜湊桶過濾</td><td>桶子計數 &lt; min_sup → 一定不頻繁</td><td>桶子計數 ≥ min_sup → 不一定頻繁（碰撞）</td><td>雜湊只是必要條件</td></tr>
+      <tr><td>分割 vs. 抽樣</td><td>分割：保證找到全部，固定掃描 2 次</td><td>抽樣：可能漏掉，最好掃 1 次、失敗要再掃</td><td>是否保證完整</td></tr>
+      <tr><td>局部頻繁 vs. 全域頻繁</td><td>全域頻繁 ⇒ 至少在一個分割局部頻繁</td><td>局部頻繁 ⇏ 全域頻繁</td><td>方向只有一邊成立</td></tr>
+      <tr><td>負邊界 vs. 不頻繁項目集</td><td>負邊界：所有真子集都在 \(L_S\)，本身不在</td><td>一般不頻繁：可能有子集也不頻繁</td><td>看它的子集是否都在 \(L_S\)</td></tr>
+      <tr><td>條件樣式基底 vs. 條件 FP-tree</td><td>基底：後綴的所有前綴路徑（含計數）</td><td>條件樹：用基底建、刪掉不頻繁項目後的樹</td><td>先收集基底，再建樹</td></tr>
+      <tr><td>前綴路徑的計數</td><td>用後綴節點的計數</td><td>不是路徑上祖先節點的計數</td><td>例：b:7 → a:4 → e:1，前綴 {b, a} 計 1 不是 4</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="B">
+    <p class="q">1. DHP 中某個候選 2-項目集所在的桶子計數 ≥ min_sup，代表？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 它一定是頻繁的</button><button data-opt="B">(B) 它可能頻繁，還要實際計數</button>
+      <button data-opt="C">(C) 它一定不頻繁</button><button data-opt="D">(D) 它的超集一定頻繁</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。桶子計數是所有落在同一桶的項目集支持度總和，可能是碰撞湊出來的，只是必要條件。</div>
+  </div>
+  <div class="quiz" data-answer="C">
+    <p class="q">2. 在 9 筆交易的 FP-tree 中，路徑 b:7 → a:4 → e:1。後綴 e 的這條前綴路徑計數是多少？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 7</button><button data-opt="B">(B) 4</button>
+      <button data-opt="C">(C) 1</button><button data-opt="D">(D) 12</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。前綴路徑的計數用後綴節點 e 的計數；b、a 的計數還包含了不含 e 的交易。</div>
+  </div>
+  <div class="quiz" data-answer="A">
+    <p class="q">3. 哪一個方法保證找到全部頻繁項目集，而且固定只掃描資料庫兩次？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 分割法</button><button data-opt="B">(B) 抽樣法</button>
+      <button data-opt="C">(C) Apriori</button><button data-opt="D">(D) DHP</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。分割法靠「全域頻繁 ⇒ 至少在一個分割局部頻繁」保證不漏，第一次找局部頻繁、第二次驗證。FP-Growth 也只掃兩次，但不在選項中。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 說明分割法為什麼不會漏掉任何全域頻繁項目集。</p>
+    <details class="answer"><summary>看解答</summary><div>反證：如果 X 在每個分割都不頻繁，每個分割的計數都小於「min_sup × 分割大小」，全部加起來就小於「min_sup × 全部大小」，X 就不是全域頻繁。所以全域頻繁一定在某個分割局部頻繁，會出現在第二次掃描的候選裡。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 為什麼抽樣法要特別檢查負邊界？</p>
+    <details class="answer"><summary>看解答</summary><div>如果樣本漏掉了某個頻繁項目集，在所有被漏掉的項目集中，最小的那一個一定在負邊界上。所以只要負邊界全部都不頻繁，就能確定沒有漏掉；若有負邊界成員是頻繁的，就要再掃描一次。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. FP-Growth 為什麼不需要產生候選？它跟 Apriori 在搜尋策略上有什麼不同？</p>
+    <details class="answer"><summary>看解答</summary><div>FP-Growth 用「後綴 → 條件樣式基底 → 條件 FP-tree → 遞迴」的方式，從已經確定頻繁的樣式直接長出更長的樣式，每一步都只看相關的子資料庫，所以不用先列候選再驗證。Apriori 是 BFS（一層一層），FP-Growth 是 DFS（分而治之）。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <p>沿用 W4 的練習資料：T1 = {A, B, C}、T2 = {A, C}、T3 = {A, D}、T4 = {B, C, E}、T5 = {A, B, C, E}，min_sup count = 2。可以在上面兩個 FP 元件切到「複習題 5 筆交易」驗算。</p>
+  <div class="quiz">
+    <p class="q">1. 寫出 F-list（同計數時依字母順序），並畫出 FP-tree。</p>
+    <details class="answer"><summary>看解答</summary><div>計數：A:4、B:3、C:4、D:1、E:2，D 刪掉。F-list = A-C-B-E。排序後：T1 = A, C, B；T2 = A, C；T3 = A；T4 = C, B, E；T5 = A, C, B, E。FP-tree：根 → A:4 → C:3 → B:2 → E:1；根 → C:1 → B:1 → E:1。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 對後綴 E、B 寫出條件樣式基底與條件 FP-tree，列出所有含 E 或 B 的頻繁項目集。</p>
+    <details class="answer"><summary>看解答</summary><div>後綴 E：基底 {A, C, B: 1}、{C, B: 1} → A:1 刪掉 → 條件樹 ⟨C:2, B:2⟩（單一路徑）→ {E}:2、{C, E}:2、{B, E}:2、{B, C, E}:2。後綴 B：基底 {A, C: 2}、{C: 1} → A:2、C:3 都留下，條件樹是 A:2 → C:2 與 C:1 兩條分支 → {B}:3、{C, B}:3、{A, B}:2；再遞迴 {C, B} 的基底 {A: 2} → {A, C, B}:2。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 若抽樣得到 \(L_S\) = {A}、{B}、{C}、{A, C}（全部項目為 A～E），寫出負邊界。</p>
+    <details class="answer"><summary>看解答</summary><div>單項中不在 \(L_S\) 的：{D}、{E}。2-項目集中兩個子集都在 \(L_S\)、本身不在的：{A, B}、{B, C}。{A, B, C} 的子集 {A, B} 不在 \(L_S\)，不算。負邊界 = {D}、{E}、{A, B}、{B, C}。可以在負邊界元件按「複習題」驗算。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 資料庫有 10 億筆交易，記憶體只放得下 1000 萬筆，而且必須保證結果完全正確，要用哪個方法？</p>
+    <details class="answer"><summary>看解答</summary><div>分割法：把資料庫切成 100 份、每份放得進記憶體，固定掃描兩次，而且保證完整。<span class="tag add">補充</span>如果資料夠密集、FP-tree 壓得下，也可以考慮 FP-Growth。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 需要快速、近似地找出熱門商品組合，可以接受偶爾要重跑，要用哪個方法？</p>
+    <details class="answer"><summary>看解答</summary><div>抽樣法：在記憶體中的樣本上快速探勘（可用較低門檻），再掃描一次全資料庫驗證；負邊界有頻繁的才需要重跑。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>Apriori 的兩個瓶頸：候選太多（尤其 \(|C_2| = \binom{n}{2}\)）、每層都要重掃資料庫。</li>
+    <li>DHP：掃描時把 (k+1)-子集雜湊進桶子；桶子計數 &lt; min_sup 的候選直接刪；桶子夠不代表一定頻繁（碰撞）。</li>
+    <li>交易縮減：不含任何頻繁 k-項目集的交易可以移除；出現在少於 k 個頻繁 k-項目集裡的項目可以丟掉。</li>
+    <li>分割（SON）：全域頻繁 ⇒ 至少一個分割局部頻繁；兩次掃描，保證完整。</li>
+    <li>抽樣：在樣本上找 \(L_S\)，掃全資料庫驗證 \(L_S\) 與負邊界；負邊界有頻繁的 → 失敗，要再掃。</li>
+    <li>負邊界 = 本身不在 \(L_S\)、但所有真子集都在 \(L_S\)。</li>
+    <li>FP-Growth：不產生候選、只掃兩次；Apriori 是 BFS，FP-Growth 是 DFS ＋ 分而治之。</li>
+    <li>建 FP-tree：找 F-list → 每筆交易刪不頻繁項目並依 F-list 排序 → 插入、共用前綴、累加計數；標頭表 ＋ 節點鏈。</li>
+    <li>探勘：從 F-list 最末的項目開始 → 條件樣式基底（前綴路徑，計數用後綴節點的）→ 條件 FP-tree → 遞迴；單一路徑時直接列出所有組合。</li>
+    <li>檢查答案：FP-Growth 與 Apriori 找到的頻繁項目集必定完全相同（本週例子都是 13 個）。</li>
+  </ol>
+
+  <footer>講義：DM_week6 | iLearning 3.pdf（2026/10/16）</footer>
+</main>
+</div>
+</body>
+</html>

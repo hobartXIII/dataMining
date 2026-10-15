@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W1 資料探勘導論</title>
+  <meta name="description" content="資料探勘 W1：KDD 流程、描述型與預測型探勘、關聯規則、分類、分群、離群值偵測">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/fim.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="w1.js"></script>
+</head>
+<body data-chapter="w1">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">W1 · 講義：DM_week1_introduction（2026/09/11）</p>
+  <h1>🧭 資料探勘導論</h1>
+
+  <div class="callout key">
+    <p class="def">資料探勘（Data Mining）是從大量資料中自動找出有趣的樣式、模型與知識的技術，又稱為知識發現（Knowledge Discovery from Data, KDD）。</p>
+    <ul>
+      <li>它是 KDD 流程的其中一步：資料準備 → <strong>資料探勘</strong> → 樣式評估 → 知識呈現。</li>
+      <li>任務分兩類：描述型（關聯規則、分群）說明資料長怎樣；預測型（分類）預測未知的值。</li>
+      <li>之後每週會深入的任務：關聯規則、分類、分群、離群值偵測、推薦、社群網路探勘、文字探勘。</li>
+      <li>挖出來的東西不一定有用，要評估有趣程度，也要注意過度擬合、雜訊、高維度、隱私。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>這份講義是整門課的地圖：先交代課程資訊，再說明「資料探勘到底在做什麼」。</li>
+    <li>資料太多人看不完，資料探勘就像在沙裡淘金（Gold nuggets from data）。</li>
+    <li>講義用 KDD 流程把整個工作拆成四大步驟，本週定位在「全流程總覽」。</li>
+    <li>接著介紹之後每週會深入的探勘任務，最後提醒要評估樣式的有趣程度，並注意資料探勘的常見問題。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 資料探勘（Data Mining）</h3>
+  <ul>
+    <li>定義：從大量資料裡自動找出有價值、看得懂、以前不知道的規律。</li>
+    <li>別名很多：知識發現（KDD）、樣式發現（Pattern discovery）、知識萃取（Knowledge extraction）、資料考古（Data archaeology）、資料分析（Data analytics）。</li>
+  </ul>
+
+  <h3>2.2 AI、機器學習、深度學習、資料探勘的關係</h3>
+  <ul>
+    <li>人工智慧（Artificial Intelligence, AI）：讓機器模仿人類學習、理解、解題、決策、創造的技術領域，範圍最大。</li>
+    <li>機器學習（Machine Learning, ML）：從資料學習，用來預測或決策。</li>
+    <li>深度學習（Deep Learning, DL）：用深層神經網路做的機器學習，是 ML 的子集。</li>
+    <li>資料探勘：講義只打了問號讓大家思考。<span class="tag add">補充</span>一般理解是：資料探勘重點在「從資料中發現知識」，大量借用機器學習、統計、資料庫的方法，和 ML 高度重疊，但不是包含關係。</li>
+    <li>綠色學習（Green Learning）：講義提到的永續 AI 方向，追求低碳、高效率的模型（中研院院士郭宗杰）。</li>
+  </ul>
+
+  <h3>2.3 知識發現流程（KDD Process）</h3>
+  <div class="callout key">
+    <p class="def">KDD 流程是把原始資料變成知識的完整流程，資料探勘只是其中的第二步。</p>
+    <ul>
+      <li>名稱：Knowledge Discovery from Data，從資料中發現知識。</li>
+      <li>怎麼做：先整理資料（清理、整合、轉換、選擇），再探勘，接著評估挑出有價值的樣式，最後用視覺化呈現。</li>
+      <li>為什麼要有前後步驟：資料很髒，直接挖會「垃圾進、垃圾出」；挖出來的樣式也要篩選，才知道哪些真的有用。</li>
+    </ul>
+  </div>
+  <p>四大步驟的細節見第 3 節。</p>
+
+  <h3>2.4 描述型 vs. 預測型探勘</h3>
+  <ul>
+    <li>描述型資料探勘（Descriptive data mining）：描述資料本身的性質，找出人看得懂的樣式。例如關聯規則、分群。</li>
+    <li>預測型資料探勘（Predictive data mining）：從資料歸納出規則，用某些變數預測未知或未來的值。例如分類。</li>
+  </ul>
+
+  <h3>2.5 資料的種類</h3>
+  <ul>
+    <li>結構化資料（Structured data）：關聯式資料（Relational data）、交易資料（Transactional data）、圖（網路）資料（Graph data）。</li>
+    <li>非結構化資料（Unstructured data）：文字、多媒體（聲音、影像、影片）。</li>
+    <li>依應用分：序列資料（Sequential data，如 DNA、音樂 MIDI／MusicXML）、空間資料（Spatial data）、時間資料（Temporal data）、社群網路資料（Social network data）。</li>
+  </ul>
+
+  <h3>2.6 可探勘的知識種類</h3>
+  <ul>
+    <li>特徵化（Characterization）：概括、摘要、對比</li>
+    <li>頻繁項目集（Frequent itemset）與關聯規則（Association rules）</li>
+    <li>分類（Classification）、分群（Clustering）</li>
+    <li>趨勢與偏差分析（Trend and deviation analysis）</li>
+    <li>離群值偵測（Outlier detection）、推薦（Recommendation）、社群網路探勘、文字探勘等</li>
+  </ul>
+
+  <h3>2.7 關聯規則（Association Rules）</h3>
+  <div class="callout key">
+    <p class="def">關聯規則是「常常一起出現」的項目之間的規則，例如「買啤酒和尿布的人也常買蘋果」。</p>
+    <ul>
+      <li>寫法：\(X \Rightarrow Y\)，X 是前項、Y 是後項。</li>
+      <li>兩個指標：支持度（Support）看「多常見」，信賴度（Confidence）看「多可靠」。</li>
+      <li>用途：超市（講義例子是全聯）想知道哪些商品常被一起買，好做擺放與促銷。W4 會詳談。</li>
+    </ul>
+  </div>
+
+  <h3>2.8 分類（Classification）</h3>
+  <div class="callout key">
+    <p class="def">分類是找出一個模型（函數），能描述並區分不同的資料類別，屬於監督式學習（Supervised Learning）。</p>
+    <ul>
+      <li>監督式：訓練資料的類別標籤（Class label）是已知的。</li>
+      <li>流程兩步：訓練（Training）建立模型 → 評估與推論（Evaluation &amp; Inference），用測試資料檢驗，再套用到沒看過的資料（Unseen data）。</li>
+    </ul>
+  </div>
+
+  <h3>2.9 分群（Clustering）</h3>
+  <div class="callout key">
+    <p class="def">分群是在沒有類別標籤的情況下，依屬性值把資料分組，屬於非監督式學習（Unsupervised Learning），講義也稱「非監督式分類」。</p>
+    <ul>
+      <li>原則：群內相似度最大化（Maximizing intraclass similarity）、群間相似度最小化（Minimizing interclass similarity）。</li>
+      <li>分群結果可以用來產生類別標籤。</li>
+    </ul>
+  </div>
+
+  <h3>2.10 半監督式學習（Semi-supervised learning）</h3>
+  <ul>
+    <li>動機：標註資料很貴，沒標註的資料很便宜。</li>
+    <li>偽標籤（Pseudo-labeling，又稱 self-training）：模型先替無標籤資料預測標籤，再把這些預測當成真的標籤拿來訓練。</li>
+    <li>也可以搭配分群方法。</li>
+  </ul>
+
+  <h3>2.11 離群值偵測（Outlier Detection）</h3>
+  <ul>
+    <li>定義：找出不符合資料整體行為的物件，又稱異常偵測（Anomaly detection）。</li>
+    <li>很多方法把離群值當雜訊丟掉，但「一個人的垃圾可能是另一個人的寶藏」，例如盜刷偵測、罕見事件分析。</li>
+  </ul>
+
+  <h3>2.12 其他主題</h3>
+  <ul>
+    <li>深度學習：前饋網路（Feed-forward NN）、卷積網路（CNN）、遞迴網路（RNN）、圖神經網路（GNN）、Transformer，正在重塑分類、分群、離群值偵測等任務。</li>
+    <li>推薦系統（Recommendation）：內容式（Content-based）、協同過濾（Collaborative filtering）、冷啟動（Cold start）問題。</li>
+    <li>社群網路探勘（Social Network Mining）：社群偵測、中心性分析、連結預測、節點分類、異常偵測。</li>
+    <li>文字探勘（Text Mining）：關鍵字擷取（TF-IDF）、主題模型（LDA）、資訊擷取、摘要、語言模型（Language Model）。</li>
+  </ul>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 KDD 流程（講義版本一：四大步驟）</h3>
+  <div class="steps">
+    <p class="steps-title">輸入：原始資料 → 輸出：可用的知識</p>
+    <ol>
+      <li><strong>資料準備（Data preparation）</strong>
+        <span class="why">資料清理（Data cleaning）：去除雜訊與不一致的資料；資料整合（Data integration）：合併多個資料來源；資料轉換（Data transformation）：透過彙總等操作轉成適合探勘的形式；資料選擇（Data selection）：從資料庫取出與分析任務相關的資料。</span></li>
+      <li><strong>資料探勘（Data mining）</strong>：套用智慧方法找出樣式或建立模型。
+        <span class="why">整個流程的核心步驟，之後每週教的演算法都在這一步。</span></li>
+      <li><strong>樣式／模型評估（Pattern/model evaluation）</strong>：用有趣度量（Interestingness measures）挑出真正有價值的樣式。
+        <span class="why">有趣的樣式要：容易被人理解、在新資料上有一定程度的有效性、可能有用、新穎。</span></li>
+      <li><strong>知識呈現（Knowledge presentation）</strong>：用視覺化等方式呈現給使用者。</li>
+    </ol>
+  </div>
+
+  <h3>3.2 KDD 流程（講義 Summary 版本：五步驟）</h3>
+  <ol>
+    <li>目標：了解應用領域</li>
+    <li>資料：收集與整合 → 清理與前處理 → 縮減與投影（挑特徵、降維）</li>
+    <li>方法：選擇探勘功能 → 選擇演算法 → 進行探勘 → 評估結果</li>
+    <li>解讀：視覺化、修正、移除重複的樣式</li>
+    <li>使用發現的知識</li>
+  </ol>
+
+  <h3>3.3 分類流程（以決策樹為例）</h3>
+  <ol>
+    <li>訓練：用訓練資料（Training data）和選定的演算法（例如決策樹）建立模型</li>
+    <li>評估：用測試資料（Test data）檢查模型準不準</li>
+    <li>推論：把模型用在沒看過的新資料上</li>
+  </ol>
+  <p>講義例子學到的規則：若 Position == Professor 或 YEARS ≥ 8，則 Tenured = YES。</p>
+
+  <div class="widget" id="w-tenure">
+    <p class="w-title">升等（Tenured）分類器</p>
+    <p class="w-desc">用講義學到的規則預測。先看訓練資料和測試資料是不是全部預測正確，再自己輸入一位老師試試看。也可以改年資門檻，看準確率怎麼變。</p>
+    <div class="controls">
+      <label>規則的年資門檻 YEARS ≥ <input type="range" id="t-th" min="1" max="15" step="1" value="8"> <span class="val" data-for="t-th"></span></label>
+    </div>
+    <div class="row">
+      <div class="col" style="flex:1 1 300px"><div class="table-wrap" id="t-train"></div></div>
+      <div class="col" style="flex:1 1 300px"><div class="table-wrap" id="t-test"></div></div>
+    </div>
+    <div class="controls">
+      <label>職級 <select id="t-pos"><option>Assistant</option><option selected>Associate</option><option>Professor</option></select></label>
+      <label>年資 <input type="range" id="t-yr" min="0" max="20" step="1" value="6"> <span class="val" data-for="t-yr"></span> 年</label>
+    </div>
+    <div class="readout" id="t-out"></div>
+  </div>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <p>本週只有關聯規則的兩個指標，詳細推導在 W4。</p>
+  $$\text{support}(X \Rightarrow Y) = \frac{\#\{\text{同時包含 } X \cup Y \text{ 的交易}\}}{|D|}$$
+  $$\text{confidence}(X \Rightarrow Y) = \frac{\text{support}(X \cup Y)}{\text{support}(X)}$$
+  <ul>
+    <li>\(|D|\)：交易總筆數；\(X\)：規則左邊（前項），\(Y\)：規則右邊（後項）</li>
+    <li>支持度越高代表規則越常見；信賴度越高代表「有 X 時 Y 也出現」越可靠</li>
+    <li>常見陷阱：信賴度的分母是 X 的支持度，不是 Y 的；\(X \Rightarrow Y\) 和 \(Y \Rightarrow X\) 支持度相同、信賴度通常不同</li>
+  </ul>
+
+  <h2 id="examples">5. 範例演算</h2>
+
+  <h3>5.1 例一：講義的購物籃資料</h3>
+  <div class="widget" id="w-rule">
+    <p class="w-title">支持度與信賴度計算器</p>
+    <p class="w-desc">點選項目組成規則 X ⇒ Y。預設是講義的 Beer ∧ Diaper ⇒ Apple：支持度 50%、信賴度 66.7%。黃底的列是同時含有 X 和 Y 的交易。</p>
+    <div id="rule-box"></div>
+    <div class="controls">
+      <button class="btn" data-rule="Beer,Diaper|Apple">Beer ∧ Diaper ⇒ Apple</button>
+      <button class="btn" data-rule="Apple,Beer|Diaper">Beer ∧ Apple ⇒ Diaper</button>
+      <button class="btn" data-rule="Apple|Bread">Apple ⇒ Bread</button>
+      <button class="btn" data-rule="Bread|Apple">Bread ⇒ Apple</button>
+    </div>
+  </div>
+
+  <div class="steps">
+    <p class="steps-title">逐步展開：四筆交易的支持度與信賴度</p>
+    <ol>
+      <li>\(\{\text{Bread, Apple}\}\) 出現在 T1、T3 → \(2/4 = 50\%\)</li>
+      <li>\(\{\text{Beer, Apple, Diaper}\}\) 出現在 T2、T3 → \(2/4 = 50\%\)</li>
+      <li>\(\{\text{Beer, Diaper}\}\) 出現在 T2、T3、T4 → \(3/4 = 75\%\)</li>
+      <li>Beer ∧ Diaper ⇒ Apple：含 Beer、Diaper 的有 3 筆，其中有 Apple 的 2 筆 → 信賴度 \(2/3 \approx 66.7\%\)</li>
+      <li>Beer ∧ Apple ⇒ Diaper：含 Beer、Apple 的有 2 筆（T2、T3），兩筆都有 Diaper → \(2/2 = 100\%\)</li>
+      <li>Apple ⇒ Bread：含 Apple 的有 3 筆，其中有 Bread 的 2 筆 → \(2/3 \approx 66.7\%\)</li>
+      <li>Bread ⇒ Apple：含 Bread 的有 2 筆（T1、T3），兩筆都有 Apple → \(2/2 = 100\%\)
+        <span class="why">第 6、7 步的支持度都是 50%，信賴度卻不同：規則方向會影響信賴度，因為分母換成了不同的前項。</span></li>
+    </ol>
+  </div>
+  <div class="callout err">
+    <p><span class="tag err">講義勘誤</span>投影片中的「Beard」「Bear」是 Bread、Beer 的筆誤。第 37 頁把「Confidence」「Support」兩個字標在規則旁，但括號中的分數（例如 2/3）其實全都是信賴度，不是支持度。</p>
+  </div>
+
+  <h3>5.2 例二：講義的升等（Tenured）分類</h3>
+  <div class="steps">
+    <p class="steps-title">逐步展開：規則「Position == Professor 或 YEARS ≥ 8 → YES」</p>
+    <ol>
+      <li>訓練資料 5 筆：Bob（Assistant, 2, NO）、Alice（Associate, 8, YES）、John（Prof, 3, YES）、Amy（Associate, 9, YES）、Mike（Assistant, 5, NO）</li>
+      <li>驗證訓練資料：John 因為是 Professor → YES；Alice、Amy 因為年資 ≥ 8 → YES；Bob、Mike 都不符合 → NO，5 筆全對</li>
+      <li>測試資料：Jessica（Associate, 2）→ 預測 NO，實際 NO ✓</li>
+      <li>Kevin（Assistant, 15）→ 年資 ≥ 8 預測 YES，實際 YES ✓</li>
+      <li>Frank（Associate, 3）→ 預測 NO，實際 NO ✓</li>
+      <li>Linda（Prof, 10）、Mark（Prof, 5）→ 預測 YES，實際 YES ✓</li>
+      <li>測試準確率 \(5/5 = 100\%\)
+        <span class="why"><span class="tag add">補充</span>真實資料很少這麼完美，這只是教學例子。上面的分類器可以把門檻改成 9，看 Alice 怎麼變成預測錯誤。</span></li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>分類 vs. 分群</td><td>分類：類別事先給定，有標籤</td><td>分群：沒有標籤，依相似度自己分組</td><td>訓練資料有沒有類別標籤</td></tr>
+      <tr><td>監督式 vs. 非監督式</td><td>監督式：用有標籤的資料學習（分類）</td><td>非監督式：沒有標籤（分群、關聯規則）</td><td>有沒有「正確答案」可以對照</td></tr>
+      <tr><td>描述型 vs. 預測型探勘</td><td>描述型：說明資料現在長怎樣</td><td>預測型：預測未知或未來的值</td><td>目的是「理解」還是「預測」</td></tr>
+      <tr><td>支持度 vs. 信賴度</td><td>支持度：規則在全部資料中多常見</td><td>信賴度：有 X 時出現 Y 的比例</td><td>分母是全部交易，還是含 X 的交易</td></tr>
+      <tr><td>訓練資料 vs. 測試資料</td><td>訓練資料：用來建立模型</td><td>測試資料：用來評估模型</td><td>測試資料不能拿來訓練</td></tr>
+      <tr><td>離群值 vs. 雜訊</td><td>離群值：不符整體行為，但可能有價值（盜刷）</td><td>雜訊：量測或輸入錯誤</td><td>是不是「真實但罕見」的事件</td></tr>
+      <tr><td>半監督式 vs. 監督式</td><td>半監督：少量標籤＋大量無標籤，靠偽標籤擴充</td><td>監督式：全部都有標籤</td><td>標籤是否齊全</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="B">
+    <p class="q">1. KDD 流程四大步驟中，「資料探勘」是第幾步？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 第一步</button><button data-opt="B">(B) 第二步</button>
+      <button data-opt="C">(C) 第三步</button><button data-opt="D">(D) 第四步</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。資料準備 → <strong>資料探勘</strong> → 樣式／模型評估 → 知識呈現。資料探勘是第二步，也是核心步驟。</div>
+  </div>
+  <div class="quiz" data-answer="C">
+    <p class="q">2. 下列哪一個是預測型資料探勘？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 關聯規則</button><button data-opt="B">(B) 分群</button>
+      <button data-opt="C">(C) 分類</button><button data-opt="D">(D) 特徵化</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。分類用已知變數預測未知的類別；關聯規則、分群、特徵化都是描述資料本身的性質。</div>
+  </div>
+  <div class="quiz" data-answer="A">
+    <p class="q">3. 規則 X ⇒ Y 的信賴度，分母是什麼？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 含 X 的交易數</button><button data-opt="B">(B) 含 Y 的交易數</button>
+      <button data-opt="C">(C) 全部交易數</button><button data-opt="D">(D) 含 X ∪ Y 的交易數</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。信賴度 = sup(X ∪ Y) ÷ sup(X)。分母是全部交易數的是支持度。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 描述型資料探勘和預測型資料探勘有什麼差別？各舉一個任務。</p>
+    <details class="answer"><summary>看解答</summary><div>描述型找人看得懂的樣式來描述資料（如關聯規則、分群）；預測型用一些變數預測其他變數的未知或未來值（如分類）。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 為什麼分群被稱為「非監督式分類」？它的分組原則是什麼？</p>
+    <details class="answer"><summary>看解答</summary><div>因為它也是把資料分成幾類，只是沒有事先給定的標籤。原則是群內相似度最大、群間相似度最小。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 什麼是偽標籤（Pseudo-labeling）？它解決什麼問題？</p>
+    <details class="answer"><summary>看解答</summary><div>讓模型先預測無標籤資料的標籤，再把預測結果當成真標籤一起訓練。解決「標註資料昂貴、無標籤資料便宜」的問題。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">4. 講義說一個樣式要「有趣」需要滿足哪四個條件？</p>
+    <details class="answer"><summary>看解答</summary><div>容易被人理解、在新資料上有一定程度的有效性、可能有用、新穎。</div></details>
+  </div>
+
+  <h3>7.3 計算題（用例一的資料）</h3>
+  <div class="quiz">
+    <p class="q">1. 計算 Diaper ⇒ Beer 的支持度和信賴度。</p>
+    <details class="answer"><summary>看解答</summary><div>含 Diaper 的交易：T2、T3、T4（3 筆），同時有 Beer 的也是 3 筆。支持度 = 3/4 = 75%，信賴度 = 3/3 = 100%。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 計算 Apple ⇒ Diaper 和 Diaper ⇒ Apple 的信賴度，並說明為什麼這題兩者相同。</p>
+    <details class="answer"><summary>看解答</summary><div>Apple 出現 3 筆，同時有 Diaper 的 2 筆 → 2/3 ≈ 66.7%。Diaper 出現 3 筆，同時有 Apple 的 2 筆 → 2/3 ≈ 66.7%。剛好相同，因為 Apple 和 Diaper 都出現 3 次；一般而言分母不同，信賴度就不同（例如 Apple ⇒ Bread 66.7%、Bread ⇒ Apple 100%）。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 若最小支持度為 50%，列出所有頻繁 2-項目集。</p>
+    <details class="answer"><summary>看解答</summary><div>{Bread, Apple} 2、{Apple, Beer} 2、{Apple, Diaper} 2、{Beer, Diaper} 3、{Bread, Beer} 1、{Bread, Diaper} 1，含 Milk 的都只有 1。門檻 50% 即至少 2 筆，所以頻繁 2-項目集是 {Bread, Apple}、{Apple, Beer}、{Apple, Diaper}、{Beer, Diaper}。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 銀行想找出可疑的信用卡交易，但幾乎沒有被標註為「盜刷」的資料，應該用哪一類方法？</p>
+    <details class="answer"><summary>看解答</summary><div>離群值（異常）偵測。盜刷是少數、不符合一般消費行為的交易，而且缺乏標籤，適合用非監督方式找出「和大家不一樣」的資料。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 學校有過去學生的修課紀錄和「是否被二一」的結果，想預測新生的風險，應該用哪一類方法？</p>
+    <details class="answer"><summary>看解答</summary><div>分類（監督式學習）。過去資料有明確標籤（有沒有被二一），可以訓練模型再預測新生。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>資料探勘 = 從大量資料中發現有趣的樣式與知識，也叫 KDD。</li>
+    <li>KDD 四步：資料準備 → 資料探勘 → 樣式評估 → 知識呈現。</li>
+    <li>資料準備四件事：清理、整合、轉換、選擇。</li>
+    <li>描述型（關聯規則、分群）vs. 預測型（分類）。</li>
+    <li>分類是監督式學習：先訓練、再用測試資料評估、最後推論新資料。</li>
+    <li>分群是非監督式學習：群內越像越好、群間越不像越好。</li>
+    <li>支持度看多常見，信賴度看多可靠，信賴度分母是前項 X 的次數。</li>
+    <li>離群值不一定是垃圾，可能是盜刷等重要事件。</li>
+    <li>有趣的樣式要：好懂、在新資料上有效、有用、新穎。</li>
+    <li>資料探勘常見問題：過度擬合、雜訊、解讀、視覺化、高維度、缺失資料、隱私。</li>
+  </ol>
+
+  <footer>講義：DM_week1_introduction.pdf（2026/09/11）</footer>
+</main>
+</div>
+</body>
+</html>
