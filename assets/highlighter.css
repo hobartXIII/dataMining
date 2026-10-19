@@ -1,0 +1,70 @@
+/* 螢光筆樣式（搭配 highlighter.js）。
+   標記顏色用 --mk-*；介面沿用頁面的 --surface、--border 等 tokens，沒有定義時用括號裡的預設值。
+   深色模式：跟隨系統，或 <html data-theme="dark|light"> 強制指定。 */
+:root {
+  --mk-y: #ffe98a; --mk-g: #c8f0d2; --mk-p: #ffd3e4; --mk-r: #d1242f; --mk-b: #1f5fd1;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --mk-y: #6b5a12; --mk-g: #1f4d30; --mk-p: #5e2741; --mk-r: #ff8a80; --mk-b: #8ab4ff;
+  }
+}
+:root[data-theme="dark"] {
+  --mk-y: #6b5a12; --mk-g: #1f4d30; --mk-p: #5e2741; --mk-r: #ff8a80; --mk-b: #8ab4ff;
+}
+
+/* 標記 */
+mark.hl-mark { color: inherit; background: none; border-radius: 2px; cursor: pointer; }
+mark.hl-mark[data-c="y"] { background: var(--mk-y); }
+mark.hl-mark[data-c="g"] { background: var(--mk-g); }
+mark.hl-mark[data-c="p"] { background: var(--mk-p); }
+mark.hl-mark[data-c="r"] { color: var(--mk-r); font-weight: 600; }
+mark.hl-mark[data-c="b"] { color: var(--mk-b); font-weight: 600; }
+
+/* 浮動工具列 */
+.hl-tool {
+  position: absolute; z-index: 50; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+  max-width: calc(100vw - 16px); padding: 6px 8px;
+  background: var(--surface, #fff); color: var(--text, #1f2328);
+  border: 1px solid var(--border, #dedcd7); border-radius: var(--radius, 10px);
+  box-shadow: 0 4px 16px rgba(0,0,0,.18);
+}
+.hl-tool[hidden] { display: none; }
+.hl-sw {
+  width: 28px; height: 28px; padding: 0; border-radius: 50%; cursor: pointer;
+  border: 2px solid var(--border, #dedcd7); background: var(--surface, #fff); font-weight: 700; font-size: .95rem;
+}
+.hl-sw.on { border-color: var(--accent, #2f6fdf); box-shadow: 0 0 0 2px var(--accent-soft, #e6eefc); }
+.hl-sw[data-c="y"] { background: var(--mk-y); }
+.hl-sw[data-c="g"] { background: var(--mk-g); }
+.hl-sw[data-c="p"] { background: var(--mk-p); }
+.hl-sw[data-c="r"] { color: var(--mk-r); }
+.hl-sw[data-c="b"] { color: var(--mk-b); }
+.hl-btn {
+  padding: 3px 10px; border: 1px solid var(--border, #dedcd7); border-radius: 6px;
+  background: var(--surface-2, #f0efec); color: var(--text, #1f2328);
+  font: inherit; font-size: .85rem; cursor: pointer; white-space: nowrap;
+}
+.hl-btn:hover { border-color: var(--accent, #2f6fdf); }
+.hl-btn[data-armed] { color: var(--neg, #c9372c); font-weight: 600; }
+.hl-note { color: var(--text-2, #5a6069); font-size: .8rem; }
+
+/* 頁首選單 */
+.hl-menu-wrap { position: relative; }
+.hl-menu-btn { white-space: nowrap; }
+@media (max-width: 480px) { .hl-menu-btn .hl-lbl { display: none; } }
+.hl-menu {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; width: 230px;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  background: var(--surface, #fff); border: 1px solid var(--border, #dedcd7); border-radius: var(--radius, 10px);
+  box-shadow: 0 4px 16px rgba(0,0,0,.18);
+}
+.hl-menu[hidden] { display: none; }
+.hl-menu-item {
+  text-align: left; padding: 6px 10px; border: 0; border-radius: 6px; background: none;
+  color: var(--text, #1f2328); font: inherit; font-size: .9rem; cursor: pointer;
+}
+.hl-menu-item:hover:not(:disabled) { background: var(--surface-2, #f0efec); }
+.hl-menu-item:disabled { opacity: .45; cursor: default; }
+.hl-menu-item[data-armed] { color: var(--neg, #c9372c); font-weight: 600; }
+.hl-menu-note { margin: 4px 10px 2px; color: var(--text-2, #5a6069); font-size: .78rem; line-height: 1.5; }

@@ -17,6 +17,9 @@
     { name: '作業 3（Kaggle）', date: '2026-12-18' },
     { name: '論文導讀', date: '2026-12-25' },
   ];
+  // 課程識別：螢光筆（highlighter.js）的 localStorage 前綴與匯出檔名。其他課程的筆記若部署在
+  // 同一個 github.io 網域，localStorage 是共用的，靠這個前綴分開
+  const COURSE = { id: 'dm', name: 'DataMining' };
 
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -94,10 +97,11 @@
       applyTheme(next);
       label();
     });
+    const hlMenu = window.Highlighter ? window.Highlighter.menu() : null;
     const bar = el('header', { class: 'topbar' }, [
       el('div', { class: 'topbar-inner' }, [
         el('a', { class: 'brand', href: prefix + 'index.html', text: '⛏️ 資料探勘筆記' }),
-        nav, themeBtn,
+        nav, hlMenu, themeBtn,
       ]),
     ]);
     document.body.prepend(bar);
@@ -459,6 +463,16 @@
   };
 
   document.addEventListener('DOMContentLoaded', () => {
+    if (window.Highlighter) {
+      const ch = document.body.dataset.chapter;
+      window.Highlighter.setup({
+        course: COURSE,
+        chapter: ch && ch !== 'home' ? ch : null,   // 首頁不是筆記，不能標記
+        content: 'main',
+        skip: '.widget, .katex, .steps-ctrl',
+        buttonClass: 'icon-btn',
+      });
+    }
     buildTopbar();
     buildHome();
     initQuizzes();
@@ -466,5 +480,8 @@
     buildToc();
   });
   // KaTeX 以 defer 載入，等全部載完再渲染
-  window.addEventListener('load', () => renderMath());
+  window.addEventListener('load', () => {
+    renderMath();
+    if (window.Highlighter) window.Highlighter.start();   // 公式渲染後才畫標記，位置才對得上
+  });
 })();
