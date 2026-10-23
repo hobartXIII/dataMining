@@ -8,6 +8,7 @@
     { id: 'w2', no: 'W2', title: '資料前處理', desc: '髒資料、屬性類型、集中趨勢與離散程度、盒鬚圖、相關係數、卡方檢定', done: true },
     { id: 'w4', no: 'W4', title: '頻繁樣式探勘與 Apriori', desc: '支持度、信賴度、閉合與極大頻繁項目集、Apriori 連接與剪枝、規則產生', done: true },
     { id: 'w6', no: 'W6', title: 'Apriori 改良與 FP-Growth', desc: 'DHP 雜湊、交易縮減、分割、抽樣與負邊界、FP-tree、FP-Growth', done: true },
+    { id: 'w7', no: 'W7', title: '分類與決策樹', desc: '訓練／驗證／測試集、決策樹歸納、熵與資訊增益、增益比、Gini 不純度', done: true },
   ];
   // 首頁倒數：考試與作業截止日
   const EXAMS = [

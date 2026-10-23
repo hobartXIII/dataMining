@@ -1,0 +1,464 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W7 分類與決策樹</title>
+  <meta name="description" content="資料探勘 W7：分類流程、訓練／驗證／測試集、決策樹歸納、熵與資訊增益（ID3）、增益比（C4.5）、Gini 不純度（CART）">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/highlighter.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/dtree.js"></script>
+  <script defer src="../assets/highlighter.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="w7.js"></script>
+</head>
+<body data-chapter="w7">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">W7 · 講義：DM_week7（2026/10/23）· 從這週開始進入分類</p>
+  <h1>🌲 分類與決策樹</h1>
+
+  <div class="callout key">
+    <p class="def">分類（Classification）是從有類別標籤的資料學出一個函數 \(f: X \to Y\)，再用它預測新資料的類別；決策樹是其中最直觀的分類器，從根節點一路問屬性問到葉節點，就得到預測。</p>
+    <ul>
+      <li>分類是監督式學習（Supervised learning）：訓練集擬合模型、驗證集選模型與超參數、測試集只做最後評估。</li>
+      <li>決策樹由上而下、遞迴、貪婪地建：每個節點挑一個讓子節點「最純」的屬性來切。</li>
+      <li>三種挑屬性的量度：資訊增益（ID3）、增益比（C4.5）、Gini 不純度（CART）。</li>
+      <li>講義範例：14 筆 buy_computer 資料，Gain(age) = 0.246 最大，所以根節點是 age。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>分類的流程分兩階段：① 學習／訓練：用訓練集建分類器，用驗證集選模型與超參數；② 評估與預測：用沒看過的測試集評估，結果可以接受才拿去分類新資料。</li>
+    <li>決策樹（Decision Tree）是長得像流程圖的分類器：內部節點測試一個屬性、分支是測試結果、葉節點是預測的類別。</li>
+    <li>資訊增益（Information gain）偏好分支多的屬性；增益比（Gain ratio）除以分割資訊（SplitInfo）來修正；Gini 不純度（Gini impurity）看依類別分布隨機貼標籤時貼錯的機率。</li>
+    <li>決策樹好解釋、幾乎不用前處理，但變異大、容易過度配適，而且貪婪分割只是局部最佳。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 分類是什麼（第 6～9 頁）</h3>
+  <div class="callout key">
+    <p class="def">分類是從有標籤的範例學習：每個物件有屬性（特徵）和一個類別標籤，目標是給一個類別未知的新物件，預測它屬於哪一類。</p>
+    <ul>
+      <li>類別標籤也是屬性：其中一個屬性被指定為類別標籤（目標屬性, target attribute）。例：影像特徵是顏色、形狀、紋理；類別標籤是 Cat 或 Dog。</li>
+      <li>Pokémon 例子：屬性是顏色、耳朵形狀、尾巴形狀、體型…；類別標籤是 Pikachu、Bulbasaur、Charmander…</li>
+      <li>在資料探勘裡，學到的分類器本身就是一種「有趣的樣式」：它描述了屬性和類別標籤之間的關係。</li>
+    </ul>
+  </div>
+  <ul>
+    <li>訓練資料：\(D_{train} = \{(x_i, y_i)\}_{i=1}^{n}\)，\(x_i \in X\) 是物件 i 的特徵向量，\(y_i \in Y\) 是它的類別標籤。X 是特徵空間，Y 是所有可能類別的集合。</li>
+    <li>特徵向量是 d 維的：\(x_i = (x_{i1}, x_{i2}, \dots, x_{id})\)；類別標籤是離散或名目（nominal）值。</li>
+    <li>分類就是學一個分類器 \(f: X \to Y\)。新物件 \(x_z\) 的預測類別是 \(\hat{y}_z = f(x_z)\)。</li>
+  </ul>
+
+  <h3>2.2 分類的兩個階段（第 10～11 頁）</h3>
+  <ol>
+    <li><strong>學習／訓練</strong>（監督式學習）：用 \(D_{train}\) 建分類器。可能學出好幾個候選 \(f_1, f_2, \dots, f_m\)，哪個最好？不能偷看測試集，要用驗證資料（validation data）來選模型和超參數。</li>
+    <li><strong>評估與預測</strong>：在保留的（held-out）測試資料上評估。測試資料在學習和選模型時都沒用過，但真實標籤已知：對每筆預測 \(\hat{y}_t = \hat{f}(x_t)\)，再和真實標籤 \(y_t\) 比對。結果可以接受，才用模型分類新資料。</li>
+  </ol>
+
+  <h3>2.3 訓練集、驗證集、測試集（第 12 頁）</h3>
+  <div class="callout key">
+    <p class="def">訓練集用來擬合模型參數，驗證集用來選模型、調超參數，測試集只做最後評估；三者不能混用。</p>
+    <ul>
+      <li>超參數例子：樹的深度、k-NN 的 k、SVM 的 C 和 γ、神經網路的架構。</li>
+      <li>講義的切法：先把 D 切成 80% 與 20%（測試集），再把 80% 那份切成 80% 訓練、20% 驗證。</li>
+      <li><span class="tag add">補充</span>換算回整份資料：訓練 64%、驗證 16%、測試 20%。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>資料集</th><th>用途</th><th>例子</th></tr>
+      <tr><td>訓練集（Training set）</td><td>擬合模型參數</td><td>決策樹的分割、SVM 的權重</td></tr>
+      <tr><td>驗證集（Validation set）</td><td>選模型、調超參數</td><td>樹深度、k-NN 的 k、SVM 的 C 和 γ</td></tr>
+      <tr><td>測試集（Test set）</td><td>只做最後評估</td><td>回報最終準確率</td></tr>
+    </table>
+  </div>
+
+  <h3>2.4 做分類任務時要決定的四件事（第 14～16 頁）</h3>
+  <ol>
+    <li>用哪些特徵？特徵擷取（feature extraction）與特徵選取（feature selection）。</li>
+    <li>用哪個分類演算法、哪些超參數？深度學習還要決定架構、激活函數、學習率、批次大小…</li>
+    <li>怎麼切分有標籤的資料？訓練、驗證、測試集。</li>
+    <li>怎麼評估模型表現？</li>
+  </ol>
+  <ul>
+    <li>樂器辨識例子：輸入是一段音訊 x，輸出是 piano、guitar、violin…。特徵可用 MFCCs、spectral centroid、Whisper；演算法可用 SVM、決策樹、2D CNN；切分 80% 訓練、20% 測試；評估用準確率（Accuracy）。</li>
+    <li>本課程會教的分類方法：決策樹、單純貝氏分類器（Naïve Bayes）、K 最近鄰（K-Nearest-Neighbors）、案例式推理（Case-Based Reasoning）、邏輯斯迴歸（Logistic Regression）、支援向量機（SVM）、集成分類器（Ensemble Classifiers）。</li>
+  </ul>
+
+  <h3>2.5 決策樹（第 18～20 頁）</h3>
+  <div class="callout key">
+    <p class="def">決策樹是以流程圖形式表示的分類器：每個內部節點測試一個屬性，每個分支對應一個測試結果，每個葉節點預測一個類別標籤。</p>
+    <ul>
+      <li>分類新資料：從根節點開始，沿著符合的分支一路走到葉節點。</li>
+      <li>建樹：一開始所有訓練資料都在根節點，依選出的屬性遞迴地分割。</li>
+      <li>每個節點用「落在這個節點的訓練資料」和一個啟發式或統計量度來挑屬性。</li>
+    </ul>
+  </div>
+
+  <h3>2.6 為什麼需要「純度」（第 54～55 頁）</h3>
+  <ul>
+    <li>好的分割讓子節點盡量純。純節點（pure node）只包含一種類別。</li>
+    <li>第 54 頁例子：用 student 分，如果 yes 那邊 6/6 都是買、no 那邊 6/6 都是不買，就完全分開；如果兩邊都是 3/6 對 3/6，等於沒分。</li>
+    <li>熵（Entropy）由 Bell Labs 的 Claude E. Shannon 提出，衡量類別的不確定性：純的時候是 0，類別平均混合時最大。</li>
+  </ul>
+
+  <div class="widget" id="w-impurity">
+    <p class="w-title">熵與 Gini 計算器</p>
+    <p class="w-desc">輸入一個節點裡各類別的筆數。預設是 buy_computer 全部 14 筆（yes 9、no 5）→ 熵 0.940、Gini 0.459。只有兩類時，下圖會標出目前的位置：兩條曲線都在 p = 0.5 最高、在兩端是 0。</p>
+    <div class="controls">
+      <label>類別 1 <input type="number" id="imp-a" min="0" max="99" value="9"></label>
+      <label>類別 2 <input type="number" id="imp-b" min="0" max="99" value="5"></label>
+      <label>類別 3 <input type="number" id="imp-c" min="0" max="99" value="0"></label>
+    </div>
+    <div class="controls">
+      <span class="muted">講義例子：</span>
+      <div class="seg" id="imp-presets"></div>
+    </div>
+    <div class="readout" id="imp-out"></div>
+    <div class="canvas-wrap" style="margin-top:10px;padding:6px"><svg class="plot curve" id="imp-svg" aria-label="兩類別的熵與 Gini 曲線"></svg></div>
+    <div class="legend"><span><i style="border-color:var(--c-b);background:var(--c-b)"></i>熵 H(p)</span><span><i style="border-color:var(--c-c);background:var(--c-c)"></i>Gini(p)</span></div>
+  </div>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 通用決策樹演算法（第 36、47 頁）</h3>
+  <div class="callout key">
+    <p class="def">決策樹歸納是遞迴的：純的就停、沒屬性可用就停，否則挑最好的屬性切開，對每一份再做一次。</p>
+    <ul>
+      <li>純節點 → 葉節點，標籤就是那個類別（第 38 頁：\(D_{middle}\) = {yes, yes, yes, yes} → yes）。</li>
+      <li>沒有候選屬性 → 葉節點，標籤用多數類別（第 39 頁：{yes, yes, yes, no} → yes）。</li>
+      <li>某個分支沒有任何資料 → 葉節點，標籤用父節點的多數類別。</li>
+    </ul>
+  </div>
+  <pre class="code">BuildTree(D, 候選屬性):
+    建立節點 N，包含 D
+    if D 全部同一類別 C:   return 葉節點 C          # 純節點
+    if 沒有候選屬性:        return 葉節點 majority(D) # 多數類別
+    A = 依屬性選擇準則挑出最好的屬性
+    for A 的每個值 a:
+        Dₐ = D 中 A = a 的資料
+        if Dₐ 是空的: 接上葉節點 majority(D)
+        else:         接上 BuildTree(Dₐ, 候選屬性 − {A})
+    return N</pre>
+
+  <h3>3.2 屬性怎麼分割節點（第 45～46 頁）</h3>
+  <ul>
+    <li>類別屬性、多路分割（multiway）：每個值一個分支（ID3、C4.5）。</li>
+    <li>數值屬性：用門檻值切成 ≤ t 和 &gt; t 兩邊（threshold split）。</li>
+    <li>類別屬性、二元分割：把值分成兩個子集（value-subset split），CART 用這種。</li>
+    <li>分割後要更新候選屬性清單：離散屬性在任一條從根到葉的路徑上最多用一次；數值屬性可以在不同門檻下重複使用。</li>
+    <li>連續屬性的兩種處理：① 離散化（Discretization），例如 age 切成 &lt; 20、20..30、30..40、40..50、&gt; 50；② 在節點上學門檻：把值排序，相鄰兩值的中點就是候選分割點。</li>
+  </ul>
+
+  <div class="widget" id="w-thresh">
+    <p class="w-title">連續屬性的門檻</p>
+    <p class="w-desc">講義第 46 頁的 age 值：15, 18, 21, 22, 24, 25, 29, 31 → 候選分割點 16.5, 19.5, 21.5, 23, 24.5, 27, 30。點圓點切換它的類別，看哪個門檻的資訊增益最大。<span class="tag add">補充</span>預設類別 no, no, no, yes, yes, yes, yes, no 是自己設的，講義沒給 → 最佳門檻 21.5，Gain 0.549。</p>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot nline" id="th-svg" aria-label="age 數線"></svg></div>
+    <div class="table-wrap" id="th-table"></div>
+    <div class="readout" id="th-out"></div>
+  </div>
+
+  <h3>3.3 資訊增益（Information Gain, ID3）</h3>
+  <div class="callout key">
+    <p class="def">資訊增益是「分割前的熵」減去「分割後各分支熵的加權平均」：切完之後不確定性降了多少。ID3 選資訊增益最大的屬性。</p>
+    <ul>
+      <li>Info(D)：分割前，D 的類別分布的熵。</li>
+      <li>\(Info_A(D)\)：依屬性 A 切成 \(D_1, \dots, D_v\) 後，各分支熵以筆數比例加權的平均。</li>
+      <li>\(Gain(A) = Info(D) - Info_A(D)\)，越大越好。</li>
+    </ul>
+  </div>
+  <ul>
+    <li>歷史：J. Ross Quinlan 在 1986 年的論文〈Induction of Decision Trees〉提出 ID3，建立在更早的概念學習系統（Concept Learning System, CLS）之上。</li>
+  </ul>
+
+  <h3>3.4 增益比（Gain Ratio, C4.5，第 62～65 頁）</h3>
+  <div class="callout key">
+    <p class="def">增益比是把資訊增益除以分割資訊（SplitInfo），用來懲罰分支太多的屬性。C4.5 選增益比最大的屬性。</p>
+    <ul>
+      <li>資訊增益的缺點：偏好分支多的屬性。極端情況是用唯一識別碼（ID）分割，每支只有 1 筆、熵都是 0，資訊增益最大，但完全沒有預測能力。</li>
+      <li>SplitInfo 只看每個分支的筆數，跟類別標籤無關；分支越多、越平均，SplitInfo 越大。</li>
+      <li>C4.5 是 ID3 的後繼者，另外加上連續屬性、缺失值處理和剪枝（pruning）。</li>
+    </ul>
+  </div>
+  <div class="callout warn">
+    <p><span class="tag add">補充</span>增益比也擋不住純 ID：14 筆資料用 ID 分割，Gain = 0.940、SplitInfo = \(\log_2 14\) = 3.807、GainRatio = 0.247，仍然大於 age 的 0.156。C4.5 實作上的補救是：只在資訊增益至少達到平均值的屬性中挑增益比最大的。可以在下面兩個元件勾「加入 ID 屬性」看看。</p>
+  </div>
+
+  <h3>3.5 Gini 不純度（Gini Impurity, CART，第 66～67 頁）</h3>
+  <div class="callout key">
+    <p class="def">Gini 不純度是依照節點的類別分布隨機貼標籤時，貼錯的機率；純的時候是 0，越混越大。</p>
+    <ul>
+      <li>3 類例子：全部是 A → Gini = 0；A 30%、B 40%、C 30% → 0.3×0.7 + 0.4×0.6 + 0.3×0.7 = 0.66。</li>
+      <li>CART（Classification and Regression Trees）是 Breiman、Friedman、Olshen、Stone 在 1984 年出版的書，建的是二元決策樹。</li>
+      <li><span class="tag add">補充</span>CART 的類別屬性要列舉值的子集：v 個值有 \(2^{v-1} - 1\) 種二元切法，選加權 Gini 最小的；屬性之間比的是 Gini 下降量 \(\Delta Gini\)，越大越好。</li>
+    </ul>
+  </div>
+  <div class="callout warn">
+    <p><span class="tag chk">待確認</span>講義文字只擷取到第 67 頁（Gini index 的定義才開頭），之後的內容（Gini 分割的計算，可能還有過度配適與剪枝）沒擷取到。本頁 Gini 分割的數字是 <span class="tag add">補充</span>依課本、用同一份 14 筆資料算的，請對照原始投影片。</p>
+  </div>
+
+  <div class="widget" id="w-split">
+    <p class="w-title">屬性評分表</p>
+    <p class="w-desc">講義第 58～65 頁：對目前的資料，每個屬性的資訊增益、增益比和 Gini 一次算出來，綠底是各欄的最佳值。預設 14 筆 → Gain(age) 0.2467 最大（講義寫 0.246，見下方說明）。點一列看完整的算式。</p>
+    <div class="controls">
+      <label>資料 <select id="sp-data"><option value="all">全部 14 筆</option><option value="youth">D_youth（5 筆）</option><option value="senior">D_senior（5 筆）</option></select></label>
+      <label><input type="checkbox" id="sp-id"> 加入 ID 屬性 <span class="tag add">補充</span></label>
+    </div>
+    <div class="table-wrap" id="sp-table"></div>
+    <div class="readout" id="sp-out"></div>
+  </div>
+  <div class="callout">
+    <p><span class="tag add">補充</span>講義的數字是無條件捨去到小數第三位：Gain(age) 0.2467 → 0.246、Gain(student) 0.1518 → 0.151、GainRatio(income) 0.0188 → 0.018、GainRatio(credit_rating) 0.0488 → 0.048、SplitInfo(income) 1.5567 → 1.556。四捨五入的話是 0.247、0.152、0.019、0.049、1.557。排名不受影響，不是算錯。</p>
+  </div>
+
+  <h3>3.6 逐步長出決策樹</h3>
+  <div class="widget" id="w-tree">
+    <p class="w-title">決策樹歸納</p>
+    <p class="w-desc">依第 36 頁的演算法，一次處理一個節點（虛線框是還沒處理的節點）。預設用資訊增益 → 根 age；youth 用 student 切、middle 是純的、senior 用 credit_rating 切，和講義第 22 頁的樹一樣。長完之後，下方可以拿第 23～26 頁的三位顧客來預測：yes、no、no。</p>
+    <div class="controls">
+      <label>準則 <select id="tr-crit"><option value="gain">資訊增益（ID3）</option><option value="ratio">增益比（C4.5）</option><option value="gini">Gini（多路分割）</option></select></label>
+      <label><input type="checkbox" id="tr-id"> 加入 ID 屬性 <span class="tag add">補充</span></label>
+    </div>
+    <div class="controls"><button class="btn primary" id="tr-next">下一步 ▶</button><button class="btn" id="tr-all">全部完成</button><button class="btn" id="tr-reset">重來</button><span class="muted" id="tr-count"></span></div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="dtree" id="tr-svg" aria-label="決策樹"></svg></div>
+    <div class="readout" id="tr-out"></div>
+    <div class="controls" style="margin-top:14px"><span class="muted">預測：</span><div class="seg" id="tr-cust"></div></div>
+    <div class="controls" id="tr-x"></div>
+    <div class="readout" id="tr-pred"></div>
+  </div>
+  <div class="callout warn">
+    <p><span class="tag add">補充</span>Gini 選項在這裡用的是多路分割的加權 Gini（選最小），方便和 ID3、C4.5 比較；真正的 CART 只做二元分割，二元切法的結果在上面的評分表最右欄。在這份資料上，三種準則長出來的樹完全相同。</p>
+  </div>
+
+  <h3>3.7 決策樹的優缺點（第 48～49 頁）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>優點</th><th>缺點</th></tr>
+      <tr><td>可解釋：預測可以寫成 if–then 規則</td><td>高變異（high variance）：訓練資料小改一點，樹就可能不一樣</td></tr>
+      <tr><td>幾乎不用前處理，通常不需要特徵縮放</td><td>樹長太深會過度配適（overfit）</td></tr>
+      <tr><td>能處理類別與數值屬性</td><td>貪婪分割只是局部最佳，不是全域最佳</td></tr>
+      <tr><td>適用各種屬性類型</td><td>單一棵樹的準確度可能不如集成方法</td></tr>
+    </table>
+  </div>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 熵（第 56 頁）</h3>
+  $$H(M) = -\sum_{i=1}^{n} p(m_i) \log_2 p(m_i)$$
+  <p>\(p(m_i)\) 是符號 \(m_i\) 出現的機率；約定 \(0 \log_2 0 = 0\)。兩類別時最大值是 1，k 類別時是 \(\log_2 k\)。</p>
+  <h3>4.2 資訊增益（第 57 頁）</h3>
+  $$Info(D) = -\sum_{i=1}^{m} p_i \log_2 p_i, \qquad Info_A(D) = \sum_{j=1}^{v} \frac{|D_j|}{|D|}\, Info(D_j)$$
+  $$Gain(A) = Info(D) - Info_A(D)$$
+  <h3>4.3 增益比（第 63 頁）</h3>
+  $$SplitInfo_A(D) = -\sum_{j=1}^{v} \frac{|D_j|}{|D|} \log_2 \frac{|D_j|}{|D|}, \qquad GainRatio(A) = \frac{Gain(A)}{SplitInfo_A(D)}$$
+  <h3>4.4 Gini 不純度（第 67 頁）</h3>
+  $$Gini(D) = \sum_{i=1}^{m} p_i (1 - p_i) = 1 - \sum_{i=1}^{m} p_i^2$$
+  <p><span class="tag add">補充</span>二元分割：\(Gini_A(D) = \frac{|D_1|}{|D|} Gini(D_1) + \frac{|D_2|}{|D|} Gini(D_2)\)，\(\Delta Gini(A) = Gini(D) - Gini_A(D)\)。兩類別時最大值 0.5，k 類別時 \(1 - 1/k\)。</p>
+  <h3>4.5 連續屬性的候選分割點（第 46 頁）</h3>
+  $$t_i = \frac{a_i + a_{i+1}}{2}$$
+  <h3>4.6 準確率（第 15 頁）</h3>
+  $$Accuracy = \frac{\#\ \text{correctly classified test samples}}{\#\ \text{test examples}}$$
+
+  <h2 id="examples">5. 範例演算</h2>
+  <h3>5.1 buy_computer 訓練資料（第 21 頁）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th class="num">#</th><th>age</th><th>income</th><th>student</th><th>credit_rating</th><th>buy_computer</th></tr>
+      <tr><td class="num">1</td><td>youth</td><td>high</td><td>no</td><td>fair</td><td>no</td></tr>
+      <tr><td class="num">2</td><td>youth</td><td>high</td><td>no</td><td>excellent</td><td>no</td></tr>
+      <tr><td class="num">3</td><td>middle</td><td>high</td><td>no</td><td>fair</td><td>yes</td></tr>
+      <tr><td class="num">4</td><td>senior</td><td>medium</td><td>no</td><td>fair</td><td>yes</td></tr>
+      <tr><td class="num">5</td><td>senior</td><td>low</td><td>yes</td><td>fair</td><td>yes</td></tr>
+      <tr><td class="num">6</td><td>senior</td><td>low</td><td>yes</td><td>excellent</td><td>no</td></tr>
+      <tr><td class="num">7</td><td>middle</td><td>low</td><td>yes</td><td>excellent</td><td>yes</td></tr>
+      <tr><td class="num">8</td><td>youth</td><td>medium</td><td>no</td><td>fair</td><td>no</td></tr>
+      <tr><td class="num">9</td><td>youth</td><td>low</td><td>yes</td><td>fair</td><td>yes</td></tr>
+      <tr><td class="num">10</td><td>senior</td><td>medium</td><td>yes</td><td>fair</td><td>yes</td></tr>
+      <tr><td class="num">11</td><td>youth</td><td>medium</td><td>yes</td><td>excellent</td><td>yes</td></tr>
+      <tr><td class="num">12</td><td>middle</td><td>medium</td><td>no</td><td>excellent</td><td>yes</td></tr>
+      <tr><td class="num">13</td><td>middle</td><td>high</td><td>yes</td><td>fair</td><td>yes</td></tr>
+      <tr><td class="num">14</td><td>senior</td><td>medium</td><td>no</td><td>excellent</td><td>no</td></tr>
+    </table>
+  </div>
+
+  <div class="steps">
+    <p class="steps-title">例一：熵的三個小例子（第 56 頁）</p>
+    <ol>
+      <li>\(M_1 = \{m_1, m_2\}\)：各 1/2 → \(H = -(\frac{1}{2}\log_2\frac{1}{2} + \frac{1}{2}\log_2\frac{1}{2}) = 1\)</li>
+      <li>\(M_2 = \{m_1, m_1, m_2\}\)：2/3、1/3 → \(H = -(-0.39 - 0.53) = 0.92\)</li>
+      <li>\(M_3 = \{m_1, m_1, m_1\}\)：3/3、0/3 → \(H = 0\)
+        <span class="why">類別越平均熵越高，越被單一類別主導熵越低。可以在上面的熵計算器按講義例子驗算。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：根節點選哪個屬性（第 58～60 頁）</p>
+    <ol>
+      <li>14 筆中 yes 9、no 5：\(Info(D) = -\frac{9}{14}\log_2\frac{9}{14} - \frac{5}{14}\log_2\frac{5}{14} = 0.940\)</li>
+      <li>依 age 分：youth 5 筆（yes 2、no 3）、middle 4 筆（yes 4、no 0）、senior 5 筆（yes 3、no 2）</li>
+      <li>\(Info_{age}(D) = \frac{5}{14} \times 0.971 + \frac{4}{14} \times 0 + \frac{5}{14} \times 0.971 = 0.694\)</li>
+      <li>\(Gain(age) = 0.940 - 0.694 = 0.246\)</li>
+      <li>同樣算出 Gain(income) = 0.029、Gain(student) = 0.151、Gain(credit_rating) = 0.048
+        <span class="why">age 最大，當根節點。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例三：增益比（第 64～65 頁）</p>
+    <ol>
+      <li>age 的分支大小 5、4、5：\(SplitInfo_{age}(D) = -\frac{5}{14}\log_2\frac{5}{14} - \frac{4}{14}\log_2\frac{4}{14} - \frac{5}{14}\log_2\frac{5}{14} = 1.577\)</li>
+      <li>\(GainRatio(age) = 0.246 / 1.577 = 0.156\)</li>
+      <li>income 分支 4、6、4 → SplitInfo = 1.557 → GainRatio = 0.019</li>
+      <li>student 分支 7、7 → SplitInfo = 1.0 → GainRatio = 0.151；credit_rating 分支 8、6 → SplitInfo = 0.985 → GainRatio = 0.049
+        <span class="why">增益比最大的仍然是 age，根節點不變。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例四：往下長（第 37～44 頁）</p>
+    <ol>
+      <li>用 age 切成三份：\(D_{youth}\) 5 筆、\(D_{middle}\) 4 筆、\(D_{senior}\) 5 筆</li>
+      <li>\(D_{middle}\) = {yes, yes, yes, yes} 是純節點 → 葉節點 yes</li>
+      <li>\(D_{youth}\) 不純，候選屬性剩 {income, student, credit_rating}：income → {no, no}、{no, yes}、{yes}；student → {no, no, no}、{yes, yes}；credit_rating → {no, no, yes}、{no, yes}</li>
+      <li>student 兩邊都純，最好
+        <span class="why"><span class="tag add">補充</span>在 \(D_{youth}\) 上：Gain(student) = 0.971、Gain(income) = 0.571、Gain(credit_rating) = 0.020。可以在評分表切到 D_youth 驗算。</span></li>
+      <li><span class="tag add">補充</span>\(D_{senior}\)（yes 3、no 2）：credit_rating 把它切成 fair → 3 筆 yes、excellent → 2 筆 no，兩邊都純，Gain = 0.971</li>
+      <li>完成的樹（第 22 頁）：age → youth 看 student（no → NO、yes → YES）；middle → YES；senior 看 credit_rating（fair → YES、excellent → NO）</li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例五：用樹預測新顧客（第 23～26 頁）</p>
+    <ol>
+      <li>顧客 1：age = middle、income = high、student = no、credit = excellent → age = middle → <strong>yes</strong>
+        <span class="why">income、student、credit_rating 都沒用到：決策樹只看路徑上的屬性。</span></li>
+      <li>顧客 2：age = senior、income = medium、student = no、credit = excellent → senior → credit = excellent → <strong>no</strong></li>
+      <li>顧客 3：age = youth、income = low、student = no、credit = fair → youth → student = no → <strong>no</strong></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例六：Gini（<span class="tag add">補充</span>依課本）</p>
+    <ol>
+      <li>\(Gini(D) = 1 - (\frac{9}{14})^2 - (\frac{5}{14})^2 = 0.459\)</li>
+      <li>income 的三種二元切法：{low, medium} | {high} = 0.443、{medium, high} | {low} = 0.450、{low, high} | {medium} = 0.458</li>
+      <li>以 {low, medium}（10 筆：yes 7、no 3）| {high}（4 筆：yes 2、no 2）為例：\(\frac{10}{14}(1 - 0.7^2 - 0.3^2) + \frac{4}{14}(1 - 0.5^2 - 0.5^2) = 0.443\)</li>
+      <li>各屬性最好的切法：age {youth, senior} | {middle} = 0.357；student 0.367；credit_rating 0.429</li>
+      <li>age 的 Gini 最小（\(\Delta Gini\) = 0.459 − 0.357 = 0.102 最大）
+        <span class="why">CART 的根節點也是 age，但切成二元：middle 一邊、youth 和 senior 另一邊。</span></li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>驗證集 vs. 測試集</td><td>驗證集：選模型、調超參數</td><td>測試集：只做最後評估，不參與任何選擇</td><td>拿測試集選模型等於作弊</td></tr>
+      <tr><td>參數 vs. 超參數</td><td>參數：訓練時學出來</td><td>超參數：訓練前設定（樹深度、k、C、γ）</td><td>是誰決定的</td></tr>
+      <tr><td>熵 vs. Gini</td><td>熵：\(-\sum p \log_2 p\)，兩類別最大 1</td><td>Gini：\(1 - \sum p^2\)，兩類別最大 0.5</td><td>都是純時為 0、平均時最大</td></tr>
+      <tr><td>Gain vs. GainRatio</td><td>Gain：偏好分支多的屬性</td><td>GainRatio：除以 SplitInfo 懲罰分支多</td><td>ID 屬性的 Gain 會最大</td></tr>
+      <tr><td>選最大 vs. 選最小</td><td>Gain、GainRatio、ΔGini：越大越好</td><td>\(Info_A(D)\)、\(Gini_A(D)\)：越小越好</td><td>看的是「下降量」還是「分割後的不純度」</td></tr>
+      <tr><td>ID3／C4.5 vs. CART</td><td>ID3、C4.5：多路分割</td><td>CART：二元分割</td><td>CART 的類別屬性要列舉子集</td></tr>
+      <tr><td>離散 vs. 數值屬性</td><td>離散：同一路徑最多用一次</td><td>數值：可在不同門檻下重複使用</td><td>切完後還有沒有區分能力</td></tr>
+      <tr><td>純節點 vs. 沒有屬性</td><td>純節點：用那個類別當葉</td><td>沒有屬性：用多數類別當葉</td><td>都停止，但標籤來源不同</td></tr>
+      <tr><td>SplitInfo vs. Info(D)</td><td>SplitInfo：只看各分支的筆數</td><td>Info(D)：看類別的分布</td><td>SplitInfo 跟類別標籤無關</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="C">
+    <p class="q">1. 要決定 k-NN 的 k 值，應該看哪一份資料上的表現？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 訓練集</button><button data-opt="B">(B) 測試集</button>
+      <button data-opt="C">(C) 驗證集</button><button data-opt="D">(D) 全部資料</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。k 是超參數，用驗證集挑。測試集只能做最後評估，拿來選 k 會讓報告的準確率過度樂觀。</div>
+  </div>
+  <div class="quiz" data-answer="B">
+    <p class="q">2. 一個節點有 yes 4 筆、no 4 筆，它的熵和 Gini 各是多少？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 0、0</button><button data-opt="B">(B) 1、0.5</button>
+      <button data-opt="C">(C) 0.5、1</button><button data-opt="D">(D) 1、1</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。兩類別平均時熵最大是 1，Gini = 1 − 0.5² − 0.5² = 0.5。</div>
+  </div>
+  <div class="quiz" data-answer="D">
+    <p class="q">3. 增益比（Gain ratio）主要是為了修正資訊增益的哪個問題？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 無法處理數值屬性</button><button data-opt="B">(B) 計算太慢</button>
+      <button data-opt="C">(C) 只能處理兩個類別</button><button data-opt="D">(D) 偏好分支多的屬性</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。分支越多、每支越小越容易純，資訊增益就越大；增益比除以 SplitInfo 來懲罰這種情況。</div>
+  </div>
+  <div class="quiz" data-answer="A">
+    <p class="q">4. 決策樹建到某個節點，剩下 {yes, yes, yes, no}，而且已經沒有候選屬性了，這個節點會變成？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 葉節點 yes</button><button data-opt="B">(B) 葉節點 no</button>
+      <button data-opt="C">(C) 繼續用 age 分割</button><button data-opt="D">(D) 刪除這個節點</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。講義第 39 頁：沒有候選屬性時，用多數類別當葉節點的標籤。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 決策樹的通用演算法在哪三種情況下停止？葉節點的標籤各怎麼決定？</p>
+    <details class="answer"><summary>看解答</summary><div>(1) 節點裡的資料全部同一類別 → 用該類別；(2) 沒有候選屬性可用 → 用節點內的多數類別；(3) 某個分支沒有任何資料 → 用父節點的多數類別。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 為什麼離散屬性在一條路徑上最多只用一次，數值屬性卻可以重複用？</p>
+    <details class="answer"><summary>看解答</summary><div>離散屬性用過之後，每個分支裡該屬性的值都一樣，再用一次也切不開。數值屬性用 ≤ t 切完，分支裡的值仍然有大有小，換一個門檻還能繼續切。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 一份顧客資料有「顧客編號」欄位，直接丟進 ID3 會發生什麼事？該怎麼處理？</p>
+    <details class="answer"><summary>看解答</summary><div>顧客編號每筆都不同，資訊增益等於 Info(D)、是所有屬性中最大的，ID3 會選它當根節點，每個葉節點只有 1 筆資料，對新顧客完全沒有預測力。應該在前處理時刪掉識別碼欄位；改用增益比也有幫助，但 <span class="tag add">補充</span>增益比對唯一識別碼仍可能偏高，C4.5 會先排除資訊增益低於平均的屬性。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <div class="quiz">
+    <p class="q">1. 一個節點有 yes 6 筆、no 2 筆，算它的熵和 Gini。</p>
+    <details class="answer"><summary>看解答</summary><div>熵 = −(0.75 log₂0.75 + 0.25 log₂0.25) = 0.311 + 0.5 = 0.811；Gini = 1 − 0.75² − 0.25² = 0.375。可以在熵計算器輸入 6、2 驗算。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 在 \(D_{senior}\)（第 4、5、6、10、14 筆）上，算 income、student、credit_rating 的資訊增益，選出最好的屬性。</p>
+    <details class="answer"><summary>看解答</summary><div>\(D_{senior}\)：yes 3、no 2，Info = 0.971。income：medium 3 筆（2/1）、low 2 筆（1/1）→ \(Info_{income}\) = 0.6×0.918 + 0.4×1 = 0.951 → Gain = 0.020。student：no 2 筆（1/1）、yes 3 筆（2/1）→ 0.951 → Gain = 0.020。credit_rating：fair 3 筆全 yes、excellent 2 筆全 no → 0 → Gain = 0.971。選 credit_rating。評分表切到 D_senior 可以驗算。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 算 student 的 \(Gini_{student}(D)\) 與 ΔGini。</p>
+    <details class="answer"><summary>看解答</summary><div>student = no：7 筆（yes 3、no 4）→ 1 − (3/7)² − (4/7)² = 0.490；student = yes：7 筆（yes 6、no 1）→ 1 − (6/7)² − (1/7)² = 0.245。\(Gini_{student}(D)\) = 0.5 × 0.490 + 0.5 × 0.245 = 0.367；ΔGini = 0.459 − 0.367 = 0.092。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">4. 若有一個屬性把 14 筆資料平均切成 7 個分支（每支 2 筆），它的 SplitInfo 是多少？</p>
+    <details class="answer"><summary>看解答</summary><div>每支比例 1/7：SplitInfo = −7 × (1/7) log₂(1/7) = log₂7 = 2.807。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 你有 1000 筆有標籤的樂器音訊，想比較決策樹和 SVM，並調整樹的最大深度。資料要怎麼切？每份各用在哪一步？</p>
+    <details class="answer"><summary>看解答</summary><div>依講義的比例：先保留 20%（200 筆）當測試集，完全不碰；剩下 800 筆再切 80% 訓練（640 筆）、20% 驗證（160 筆）。用訓練集訓練不同深度的決策樹和不同 C、γ 的 SVM，用驗證集挑出最好的模型與超參數，最後只在測試集上評估一次、回報準確率。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>分類 = 從有標籤的資料學 \(f: X \to Y\)，預測新資料的類別；監督式學習。</li>
+    <li>訓練集擬合參數、驗證集選模型與超參數、測試集只做最後評估；講義切法 80/20 再 80/20 → 64/16/20。</li>
+    <li>決策樹：內部節點測屬性、分支是結果、葉節點是類別；從根走到葉就是預測。</li>
+    <li>建樹：由上而下、遞迴、貪婪；停止於純節點（用該類別）、沒屬性（多數類別）、空分支（父節點的多數類別）。</li>
+    <li>熵 \(H = -\sum p \log_2 p\)；純 = 0，兩類別平均 = 1。</li>
+    <li>\(Gain(A) = Info(D) - \sum \frac{|D_j|}{|D|} Info(D_j)\)，選最大（ID3）。</li>
+    <li>Gain 偏好分支多；\(GainRatio = Gain / SplitInfo\)，SplitInfo 只看分支筆數（C4.5）。</li>
+    <li>\(Gini = 1 - \sum p^2\)；純 = 0，兩類別平均 = 0.5；CART 做二元分割、選 ΔGini 最大。</li>
+    <li>連續屬性：排序後取相鄰中點當候選門檻；數值屬性可在同一路徑重複使用。</li>
+    <li>buy_computer：Info(D) = 0.940；Gain：age 0.246 &gt; student 0.151 &gt; credit 0.048 &gt; income 0.029；樹 = age → youth 看 student、middle 直接 yes、senior 看 credit_rating。</li>
+  </ol>
+
+  <footer>講義：DM_week7 | iLearning 3.pdf（2026/10/23）</footer>
+</main>
+</div>
+</body>
+</html>

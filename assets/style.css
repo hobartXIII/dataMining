@@ -343,3 +343,36 @@ svg.lattice .n { cursor: pointer; }
 @media (max-width: 520px) {
   .buckets { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
+/* W7：熵／Gini 曲線、數線、決策樹 */
+svg.plot .axis { stroke: var(--text-2); stroke-width: 1.2; fill: none; }
+svg.plot .grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 3; fill: none; }
+svg.plot .tick { fill: var(--text-2); font: 11px var(--mono); dominant-baseline: central; }
+svg.curve .c-h { stroke: var(--c-b); stroke-width: 2.2; fill: none; }
+svg.curve .c-g { stroke: var(--c-c); stroke-width: 2.2; fill: none; }
+svg.curve .m-h { fill: var(--c-b); }
+svg.curve .m-g { fill: var(--c-c); }
+svg.nline { touch-action: auto; }
+svg.nline .cut { stroke: var(--border); stroke-width: 1.4; stroke-dasharray: 4 3; }
+svg.nline .cut.best { stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: none; }
+svg.nline .pt { cursor: pointer; }
+svg.nline .pt circle { stroke-width: 1.6; }
+svg.nline .pt.yes circle { fill: color-mix(in srgb, var(--pos) 22%, var(--surface)); stroke: var(--pos); }
+svg.nline .pt.no circle { fill: color-mix(in srgb, var(--neg) 18%, var(--surface)); stroke: var(--neg); }
+svg.nline .pt text { fill: var(--text); font: 700 10px var(--mono); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+svg.dtree { display: block; width: 100%; height: auto; margin: 0 auto; }
+svg.dtree .edge { stroke: var(--text-2); stroke-width: 1.4; fill: none; }
+svg.dtree .edge.on { stroke: var(--hl-strong); stroke-width: 3; }
+svg.dtree .elabel {
+  fill: var(--text); font: 600 11px var(--mono); text-anchor: middle; dominant-baseline: central;
+  paint-order: stroke; stroke: var(--surface-2); stroke-width: 5px; stroke-linejoin: round;
+}
+svg.dtree .node rect { fill: var(--surface); stroke: var(--text-2); stroke-width: 1.4; }
+svg.dtree .node .t1 { fill: var(--text); font: 700 13px var(--mono); text-anchor: middle; dominant-baseline: central; }
+svg.dtree .node .t2 { fill: var(--text-2); font: 10px var(--mono); text-anchor: middle; dominant-baseline: central; }
+svg.dtree .node.pending rect { fill: var(--surface-2); stroke: var(--border); stroke-dasharray: 4 3; }
+svg.dtree .node.pending .t1 { fill: var(--text-2); }
+svg.dtree .node.leaf.yes rect { fill: color-mix(in srgb, var(--pos) 18%, var(--surface)); stroke: var(--pos); }
+svg.dtree .node.leaf.no rect { fill: color-mix(in srgb, var(--neg) 14%, var(--surface)); stroke: var(--neg); }
+svg.dtree .node.cur rect { stroke: var(--accent); stroke-width: 3; }
+svg.dtree .node.path rect { stroke: var(--hl-strong); stroke-width: 3; }
+tr.click { cursor: pointer; }
