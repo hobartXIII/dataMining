@@ -1,0 +1,616 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>期中考重點整理</title>
+  <meta name="description" content="資料探勘期中考：依老師給的參考方向整理，頻繁樣式探勘、分類、評估、分群的計算作法、中英名詞與練習題">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/highlighter.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/dtree.js"></script>
+  <script defer src="../assets/highlighter.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="exam.js"></script>
+</head>
+<body data-chapter="exam">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">期中考 · 2026/11/27 · 依老師給的「期中考參考方向」整理</p>
+  <h1>📝 期中考重點整理</h1>
+
+  <div class="callout key">
+    <p class="def">考法：直接考小型的實際分類或計算，題目用英文加中文說明，重點是「作法」。所以每個主題都要能把步驟一步一步寫出來，並認得英文名詞。</p>
+    <ul>
+      <li>四大塊：頻繁樣式探勘（Apriori、FP-Growth、規則評估）、分類（決策樹、單純貝氏、SVM、集成）、評估（過度配適、混淆矩陣、ROC）、分群（輸入矩陣、K-means、階層式、DBSCAN）。</li>
+      <li>每節的格式：英中名詞 → 作法步驟 → 範例（按「下一步」逐步展開）→ 常見陷阱 → 練習題。範例數字都驗算過。</li>
+      <li>計算時寫出分數再約分，最後才換成小數：老師的講義常用無條件捨去（例如 0.2467 寫成 0.246），寫分數比較不會被扣分。</li>
+      <li><span class="tag add">補充</span>單純貝氏與 DBSCAN 的點類型沒有對應的講義筆記（雲端硬碟沒有 W8 講義、W11 講義後段沒擷取到），本頁依教科書整理，請對照老師的投影片。</li>
+    </ul>
+  </div>
+
+  <h2 id="checklist">考前檢查清單</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>參考方向（英文）</th><th>要會算／會講的東西</th><th>詳細筆記</th></tr>
+      <tr><td>Frequent itemsets、Maximal、Closed</td><td>算支持度計數、判斷閉合與極大</td><td><a href="w4.html#concepts">W4</a></td></tr>
+      <tr><td>Apriori：Join、Prune</td><td>從 \(L_{k-1}\) 連接出 \(C_k\)、用子集剪枝、掃描計數</td><td><a href="w4.html#algo">W4</a></td></tr>
+      <tr><td>FP-Growth：Construct、Mine FP-tree</td><td>F-list 排序、插入交易長樹、條件模式基底、條件 FP-tree</td><td><a href="w6.html#algo">W6</a></td></tr>
+      <tr><td>Support、Confidence、Lift</td><td>三個公式、判斷正／負相關</td><td><a href="w4.html#formula">W4</a></td></tr>
+      <tr><td>Class labels、Decision tree</td><td>Info gain、Gain ratio、Gini 選分割屬性</td><td><a href="w7.html#algo">W7</a></td></tr>
+      <tr><td>Naïve Bayesian</td><td>給屬性值算各類別的後驗、選最大</td><td>本頁</td></tr>
+      <tr><td>SVM objective</td><td>最大化邊界 \(2/\lVert w \rVert\)、限制條件、軟邊界 C</td><td><a href="w9.html#algo">W9</a></td></tr>
+      <tr><td>Ensemble error rate</td><td>二項分布算「過半數錯」的機率</td><td><a href="w9.html#algo">W9</a></td></tr>
+      <tr><td>Overfitting、Confusion matrix、ROC</td><td>所有指標、從分數畫 ROC 與算 AUC</td><td><a href="w10.html#concepts">W10</a></td></tr>
+      <tr><td>Input matrix、K-means</td><td>資料矩陣 vs. 相異度矩陣、K-means 手算、優缺點</td><td><a href="w11.html#concepts">W11</a></td></tr>
+      <tr><td>Hierarchical：agglomerative、linkage</td><td>單一／完全／平均連結逐步合併</td><td><a href="w11.html#algo">W11</a></td></tr>
+      <tr><td>DBSCAN：types of points</td><td>核心點、邊界點、雜訊點</td><td>本頁</td></tr>
+    </table>
+  </div>
+
+  <!-- ===================== 1. 頻繁樣式 ===================== -->
+  <h2 id="fpm">1. 頻繁樣式探勘（Frequent Pattern Mining）</h2>
+
+  <h3>1.1 名詞</h3>
+  <div class="table-wrap">
+    <table class="glossary">
+      <tr><th>英文</th><th>中文</th><th>一句話</th></tr>
+      <tr><td>Itemset</td><td>項目集</td><td>一組項目；含 k 個項目叫 k-itemset</td></tr>
+      <tr><td>Support count</td><td>支持度計數</td><td>包含該項目集的交易筆數</td></tr>
+      <tr><td>Frequent itemset</td><td>頻繁項目集</td><td>支持度 ≥ 最小支持度 min_sup</td></tr>
+      <tr><td>Closed itemset</td><td>閉合項目集</td><td>頻繁，且沒有任何超集合的支持度和它<strong>一樣</strong></td></tr>
+      <tr><td>Maximal itemset</td><td>極大項目集</td><td>頻繁，且沒有任何超集合是<strong>頻繁</strong>的</td></tr>
+      <tr><td>Candidate</td><td>候選項目集</td><td>\(C_k\)：可能頻繁、要掃描資料庫確認的 k-itemset</td></tr>
+      <tr><td>Apriori property</td><td>Apriori 性質（向下封閉）</td><td>頻繁項目集的所有子集都頻繁；有任何子集不頻繁，它就不可能頻繁</td></tr>
+    </table>
+  </div>
+
+  <h3>1.2 練習資料（講義 W4 第 51 頁、W6 使用的 9 筆交易）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>TID</th><th>項目</th><th>TID</th><th>項目</th><th>TID</th><th>項目</th></tr>
+      <tr><td>001</td><td>a, b, e</td><td>004</td><td>a, b, d</td><td>007</td><td>a, c, f</td></tr>
+      <tr><td>002</td><td>b, d</td><td>005</td><td>a, c</td><td>008</td><td>a, b, c, e</td></tr>
+      <tr><td>003</td><td>b, c</td><td>006</td><td>b, c</td><td>009</td><td>a, b, c</td></tr>
+    </table>
+  </div>
+  <p>min_sup = 2（支持度計數）。以下 1.3～1.6 都用這份資料。</p>
+
+  <h3>1.3 Apriori：Join 與 Prune 的作法</h3>
+  <ol>
+    <li><strong>掃第 1 次</strong>：數每個項目 → \(C_1\)，留下計數 ≥ min_sup 的 → \(L_1\)。</li>
+    <li><strong>Join（連接）</strong>：\(L_{k-1}\) 中兩個項目集「前 k − 2 個項目相同、最後一個不同」就合併成一個 k-itemset（項目先照字母排好）。</li>
+    <li><strong>Prune（剪枝）</strong>：檢查每個候選的所有 (k − 1)-子集，只要有一個不在 \(L_{k-1}\)，就刪掉（不用掃資料庫就知道它不頻繁）。</li>
+    <li><strong>掃描計數</strong>：剩下的候選 \(C_k\) 去資料庫數支持度，≥ min_sup 的成為 \(L_k\)。</li>
+    <li>重複 2～4，直到 \(L_k\) 是空的。</li>
+  </ol>
+  <div class="steps">
+    <p class="steps-title">範例：9 筆交易、min_sup = 2</p>
+    <ol>
+      <li>\(C_1\)：a 6、b 7、c 6、d 2、e 2、f 1 → f 不頻繁，\(L_1\) = {a, b, c, d, e}</li>
+      <li>Join：\(L_1\) 兩兩合併得到 10 個 \(C_2\)：ab、ac、ad、ae、bc、bd、be、cd、ce、de（2-itemset 的子集都是 1-itemset，全在 \(L_1\)，不用剪）</li>
+      <li>計數：ab 4、ac 4、ad 1、ae 2、bc 4、bd 2、be 2、cd 0、ce 1、de 0 → \(L_2\) = {ab, ac, ae, bc, bd, be}</li>
+      <li>Join：ab + ac → abc；ab + ae → abe；ac + ae → ace；bc + bd → bcd；bc + be → bce；bd + be → bde（共 6 個）
+        <span class="why">只有「第一個項目相同」的才能合併，例如 ab 和 bc 不能合併。</span></li>
+      <li>Prune：ace 的子集 ce 不在 \(L_2\) → 刪；bcd 的 cd、bce 的 ce、bde 的 de 也不在 → 刪。剩 \(C_3\) = {abc, abe}</li>
+      <li>計數：abc 2、abe 2 → \(L_3\) = {abc, abe}</li>
+      <li>Join：abc + abe → abce；子集 ace、bce 不在 \(L_3\) → 剪掉，\(C_4\) 是空的，結束
+        <span class="why">頻繁項目集共 13 個：a, b, c, d, e, ab, ac, ae, bc, bd, be, abc, abe。</span></li>
+    </ol>
+  </div>
+
+  <h3>1.4 Closed 與 Maximal 的判斷法</h3>
+  <ul>
+    <li>先列出全部頻繁項目集與計數，再對每一個看它的<strong>直接超集合</strong>（多一個項目的）。</li>
+    <li>有超集合計數<strong>一樣</strong> → 不是 closed。有超集合是<strong>頻繁</strong>的 → 不是 maximal。</li>
+    <li>每個 maximal 一定是 closed，反過來不一定。數量：maximal ≤ closed ≤ frequent。</li>
+  </ul>
+  <div class="steps">
+    <p class="steps-title">範例：上面的 13 個頻繁項目集</p>
+    <ol>
+      <li>a:6 的超集合 ab 4、ac 4、ae 2，都比 6 小 → closed；但 ab 是頻繁的 → 不是 maximal</li>
+      <li>d:2 的超集合 bd:2，計數一樣 → 不是 closed。同理 e:2（ae:2）、ae:2（abe:2）、be:2（abe:2）都不是 closed</li>
+      <li>bd:2 的超集合 abd 1、bcd 0、bde 0 都不頻繁 → closed 且 maximal</li>
+      <li>abc:2、abe:2 沒有頻繁的超集合 → closed 且 maximal
+        <span class="why">Closed（9 個）：a, b, c, ab, ac, bc, bd, abc, abe。Maximal（3 個）：bd, abc, abe。</span></li>
+    </ol>
+  </div>
+
+  <h3>1.5 FP-Growth：Construct FP-tree</h3>
+  <ol>
+    <li>掃第 1 次：數每個項目，刪掉不頻繁的，依計數<strong>由大到小</strong>排成 F-list（同計數依字母）。</li>
+    <li>每筆交易只留頻繁項目，並照 F-list 的順序重排。</li>
+    <li>掃第 2 次：從 null 根節點開始，把每筆交易當一條路徑插入：前綴相同就沿用既有節點、計數 +1；不同就開新分支（計數 1）。</li>
+    <li>標頭表（header table）用節點鏈（node-link）串起同一個項目的所有節點。</li>
+  </ol>
+  <div class="steps">
+    <p class="steps-title">範例：建樹</p>
+    <ol>
+      <li>計數 b 7、a 6、c 6、d 2、e 2（f 1 刪掉）→ F-list = b, a, c, d, e（a、c 同為 6，依字母）</li>
+      <li>重排：001 bae、002 bd、003 bc、004 bad、005 ac、006 bc、007 ac、008 bace、009 bac</li>
+      <li>插入後的樹：
+        <pre class="code" style="margin:6px 0">null
+├─ b:7
+│  ├─ a:4
+│  │  ├─ e:1
+│  │  ├─ d:1
+│  │  └─ c:2
+│  │     └─ e:1
+│  ├─ d:1
+│  └─ c:2
+└─ a:2
+   └─ c:2</pre>
+        <span class="why">根節點下有兩條分支，因為 005、007 不含 b。可以在 <a href="w6.html#algo">W6 的 FP-tree 元件</a>逐筆看插入過程。</span></li>
+    </ol>
+  </div>
+
+  <h3>1.6 FP-Growth：Mining FP-tree</h3>
+  <ol>
+    <li>從 F-list <strong>最後一個</strong>項目開始往前處理。</li>
+    <li>沿節點鏈找出該項目的每個節點，往根走得到前綴路徑，計數用該節點的計數 → <strong>條件模式基底</strong>（conditional pattern base）。</li>
+    <li>在基底中把每個項目的計數加總，刪掉 &lt; min_sup 的 → 建<strong>條件 FP-tree</strong>。</li>
+    <li>條件 FP-tree 中的項目和後綴組合，就是含該後綴的頻繁項目集；樹若還有分支就遞迴。</li>
+  </ol>
+  <div class="steps">
+    <p class="steps-title">範例：每個後綴的條件模式基底</p>
+    <ol>
+      <li>e：基底 {b, a}:1、{b, a, c}:1 → 計數 b 2、a 2、c 1 → 留 b, a → 頻繁 e:2、ae:2、be:2、abe:2</li>
+      <li>d：基底 {b}:1、{b, a}:1 → b 2、a 1 → 留 b → d:2、bd:2</li>
+      <li>c：基底 {b}:2、{a}:2、{b, a}:2 → b 4、a 4 → 條件樹有兩條分支，遞迴 → c:6、ac:4、bc:4、abc:2</li>
+      <li>a：基底 {b}:4 → a:6、ab:4</li>
+      <li>b：基底是空的 → b:7
+        <span class="why">合起來正好是 Apriori 找到的 13 個頻繁項目集，但只掃了資料庫兩次、沒有產生候選。</span></li>
+    </ol>
+  </div>
+
+  <h3>1.7 規則評估：Support、Confidence、Lift</h3>
+  $$support(X \Rightarrow Y) = P(X \cup Y) = \frac{count(X \cup Y)}{|D|}, \qquad confidence(X \Rightarrow Y) = \frac{count(X \cup Y)}{count(X)}$$
+  $$lift(X \Rightarrow Y) = \frac{confidence(X \Rightarrow Y)}{support(Y)} = \frac{P(X \cup Y)}{P(X)P(Y)}$$
+  <ul>
+    <li>Lift &gt; 1：正相關（X 出現讓 Y 更可能出現）；= 1：獨立；&lt; 1：負相關。</li>
+    <li>規則產生：對每個頻繁項目集 l 的每個非空真子集 s，規則 s ⇒ (l − s) 的信賴度 = count(l) / count(s)，≥ min_conf 就輸出。支持度一定夠（因為 l 頻繁）。</li>
+    <li>注意 \(X \cup Y\) 是「同時包含 X 和 Y 的交易」，不是「含 X 或含 Y」。</li>
+  </ul>
+  <div class="steps">
+    <p class="steps-title">範例：從 abe 產生規則（|D| = 9）</p>
+    <ol>
+      <li>count(abe) = 2 → 每條規則的 support = 2/9 = 22.2%</li>
+      <li>ab ⇒ e：conf = 2/4 = 50%；lift = 0.5 / (2/9) = 2.25（強正相關）</li>
+      <li>e ⇒ ab：conf = 2/2 = 100%；lift = 1 / (4/9) = 2.25
+        <span class="why">同一對 X、Y 的 lift 對調前後項不變；信賴度則會變。</span></li>
+      <li>對照：a ⇒ b：conf = 4/6 = 66.7%，看起來不錯，但 lift = (4/6) / (7/9) = 0.857 &lt; 1，其實是負相關
+        <span class="why">b 本身就出現在 7/9 的交易裡，信賴度 66.7% 反而比「不管 a，b 出現的機率 77.8%」低。這就是只看信賴度的陷阱。</span></li>
+    </ol>
+  </div>
+
+  <h3>1.8 練習題</h3>
+  <div class="quiz" data-answer="C">
+    <p class="q">1. \(L_2\) = {AB, AC, BC, BD}，Join 之後再 Prune，\(C_3\) 剩下哪些？</p>
+    <div class="opts">
+      <button data-opt="A">(A) {ABC, BCD}</button><button data-opt="B">(B) {ABC, ABD, BCD}</button>
+      <button data-opt="C">(C) {ABC}</button><button data-opt="D">(D) {BCD}</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。Join：AB + AC → ABC；BC + BD → BCD（AB 和 BC 第一項不同，不能合併）。Prune：ABC 的子集 AB、AC、BC 都在 \(L_2\) → 留；BCD 的子集 CD 不在 → 刪。</div>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 5 筆交易：T1 {A, B, C}、T2 {A, C}、T3 {A, D}、T4 {B, C, E}、T5 {A, B, C, E}。算 A ⇒ C 的 support、confidence、lift。</p>
+    <details class="answer"><summary>看解答</summary><div>count(A) = 4、count(C) = 4、count(AC) = 3。support = 3/5 = 60%；confidence = 3/4 = 75%；lift = 0.75 / (4/5) = 0.9375 &lt; 1，輕微負相關。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 承上題，min_sup = 2，列出所有 closed 與 maximal 項目集。</p>
+    <details class="answer"><summary>看解答</summary><div>頻繁：A 4、B 3、C 4、E 2、AB 2、AC 3、BC 3、BE 2、CE 2、ABC 2、BCE 2。Closed：A 4、C 4、AC 3、BC 3、ABC 2、BCE 2（B:3 有 BC:3、E:2 有 BE:2 等計數相同的超集合）。Maximal：ABC、BCE。可在 <a href="w4.html">W4 的元件</a>切到練習資料驗算。</div></details>
+  </div>
+
+  <!-- ===================== 2. 分類 ===================== -->
+  <h2 id="cls">2. 分類（Classification）</h2>
+
+  <h3>2.1 名詞</h3>
+  <div class="table-wrap">
+    <table class="glossary">
+      <tr><th>英文</th><th>中文</th><th>一句話</th></tr>
+      <tr><td>Class label</td><td>類別標籤</td><td>被指定為預測目標的那個屬性（target attribute），值是離散的類別</td></tr>
+      <tr><td>Training / validation / test set</td><td>訓練／驗證／測試集</td><td>擬合參數／選模型與超參數／只做最後評估</td></tr>
+      <tr><td>Entropy</td><td>熵</td><td>類別的不確定性，純節點 = 0</td></tr>
+      <tr><td>Information gain</td><td>資訊增益</td><td>分割前的熵 − 分割後的加權熵（ID3）</td></tr>
+      <tr><td>Split information</td><td>分割資訊</td><td>只看各分支筆數的熵，用來懲罰分支多</td></tr>
+      <tr><td>Gain ratio</td><td>增益比</td><td>Gain / SplitInfo（C4.5）</td></tr>
+      <tr><td>Gini impurity</td><td>Gini 不純度</td><td>\(1 - \sum p_i^2\)，CART 用</td></tr>
+      <tr><td>Prior / likelihood / posterior</td><td>先驗／概似／後驗</td><td>\(P(C)\)／\(P(X \mid C)\)／\(P(C \mid X)\)</td></tr>
+      <tr><td>Margin</td><td>邊界</td><td>SVM 兩條邊界線的距離 \(2/\lVert w \rVert\)</td></tr>
+      <tr><td>Support vector</td><td>支援向量</td><td>落在邊界上、決定超平面的資料點</td></tr>
+      <tr><td>Base classifier</td><td>基礎分類器</td><td>集成方法裡的每一個成員</td></tr>
+    </table>
+  </div>
+  <p><strong>Class label 是什麼</strong>：分類資料的每筆物件有一組屬性（特徵）和一個類別標籤；類別標籤也是屬性之一，只是被指定成要預測的目標。例：影像特徵是顏色、形狀、紋理，類別標籤是 Cat 或 Dog。分類是學一個 \(f: X \to Y\)，給沒有標籤的新物件預測它的類別。</p>
+
+  <h3>2.2 決策樹：怎麼選最好的分割</h3>
+  $$Info(D) = -\sum_i p_i \log_2 p_i, \qquad Info_A(D) = \sum_j \frac{|D_j|}{|D|} Info(D_j), \qquad Gain(A) = Info(D) - Info_A(D)$$
+  $$SplitInfo_A(D) = -\sum_j \frac{|D_j|}{|D|}\log_2\frac{|D_j|}{|D|}, \qquad GainRatio(A) = \frac{Gain(A)}{SplitInfo_A(D)}$$
+  $$Gini(D) = 1 - \sum_i p_i^2, \qquad Gini_A(D) = \sum_j \frac{|D_j|}{|D|} Gini(D_j), \qquad \Delta Gini(A) = Gini(D) - Gini_A(D)$$
+  <ol>
+    <li>算整份資料的 Info(D)（或 Gini(D)）。</li>
+    <li>對每個屬性：依屬性值分組，數每組的類別筆數，算每組的熵（或 Gini），再用筆數比例加權平均。</li>
+    <li>Gain、GainRatio、ΔGini 選<strong>最大</strong>；\(Info_A\)、\(Gini_A\) 選<strong>最小</strong>。</li>
+    <li>選出的屬性當節點，每個分支遞迴做同樣的事；純節點或沒屬性可用就停。</li>
+  </ol>
+  <div class="callout">
+    <p>常用的熵值（背起來省時間）：\(H(1/2, 1/2) = 1\)、\(H(1/4, 3/4) = 0.811\)、\(H(1/3, 2/3) = 0.918\)、\(H(2/5, 3/5) = 0.971\)、\(H(1/5, 4/5) = 0.722\)、\(H(9/14, 5/14) = 0.940\)。</p>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <tr><th class="num">#</th><th>Outlook</th><th>Wind</th><th>Play</th><th class="num">#</th><th>Outlook</th><th>Wind</th><th>Play</th></tr>
+      <tr><td class="num">1</td><td>sunny</td><td>weak</td><td>no</td><td class="num">5</td><td>rain</td><td>weak</td><td>yes</td></tr>
+      <tr><td class="num">2</td><td>sunny</td><td>strong</td><td>no</td><td class="num">6</td><td>rain</td><td>strong</td><td>no</td></tr>
+      <tr><td class="num">3</td><td>sunny</td><td>weak</td><td>yes</td><td class="num">7</td><td>sunny</td><td>weak</td><td>no</td></tr>
+      <tr><td class="num">4</td><td>rain</td><td>weak</td><td>yes</td><td class="num">8</td><td>rain</td><td>weak</td><td>yes</td></tr>
+    </table>
+  </div>
+  <p><span class="tag add">補充</span>自己設計的 8 筆小資料（考試的規模大概就是這樣），2.2 和 2.3 都用它。</p>
+  <div class="steps">
+    <p class="steps-title">範例：Outlook 還是 Wind？三種量度都算一次</p>
+    <ol>
+      <li>yes 4、no 4 → Info(D) = 1、Gini(D) = 1 − 0.5² − 0.5² = 0.5</li>
+      <li>Outlook：sunny 4 筆（yes 1、no 3）、rain 4 筆（yes 3、no 1）→ 兩邊熵都是 0.811 → \(Info_{Outlook}\) = 0.811 → Gain = 0.189</li>
+      <li>Wind：weak 6 筆（yes 4、no 2）熵 0.918、strong 2 筆（yes 0、no 2）熵 0 → \(Info_{Wind}\) = 6/8 × 0.918 = 0.689 → Gain = 0.311</li>
+      <li>SplitInfo：Outlook 4、4 → 1；Wind 6、2 → \(-0.75\log_2 0.75 - 0.25\log_2 0.25\) = 0.811 → GainRatio：Outlook 0.189、Wind 0.384</li>
+      <li>Gini：Outlook 兩邊各 1 − 0.25² − 0.75² = 0.375 → 0.375；Wind：weak 1 − (4/6)² − (2/6)² = 0.444、strong 0 → 6/8 × 0.444 = 0.333</li>
+      <li>三種量度都選 <strong>Wind</strong>：Gain 0.311 &gt; 0.189、GainRatio 0.384 &gt; 0.189、\(Gini_A\) 0.333 &lt; 0.375
+        <span class="why">Wind = strong 那支是純的（全部 no），直接變成葉節點；weak 那支 6 筆再用 Outlook 切下去。</span></li>
+    </ol>
+  </div>
+
+  <h3>2.3 單純貝氏分類器（Naïve Bayesian）<span class="tag add">補充</span></h3>
+  <div class="callout key">
+    <p class="def">單純貝氏用貝氏定理算每個類別的後驗機率 \(P(C_i \mid X)\)，選最大的類別；「單純」是假設在給定類別下，各屬性彼此條件獨立，所以概似可以拆成每個屬性的乘積。</p>
+    <ul>
+      <li>\(P(C_i \mid X) = \frac{P(X \mid C_i)P(C_i)}{P(X)}\)；P(X) 對每個類別都一樣，比大小時可以省略。</li>
+      <li>條件獨立：\(P(X \mid C_i) = \prod_k P(x_k \mid C_i)\)。</li>
+      <li>類別屬性：\(P(x_k \mid C_i)\) = 類別 \(C_i\) 中屬性值為 \(x_k\) 的筆數 ÷ 類別 \(C_i\) 的筆數。</li>
+      <li>零機率問題：只要有一個 \(P(x_k \mid C_i) = 0\)，整個乘積就是 0。用拉普拉斯修正（Laplace correction）：分子 +1、分母 + 該屬性的值數。</li>
+      <li><span class="tag add">補充</span>連續屬性通常假設常態分布：\(P(x_k \mid C_i) = \frac{1}{\sqrt{2\pi}\sigma}e^{-\frac{(x - \mu)^2}{2\sigma^2}}\)，μ、σ 用該類別的資料算。</li>
+    </ul>
+  </div>
+  $$P(C_i \mid X) \propto P(C_i)\prod_{k=1}^{n} P(x_k \mid C_i), \qquad \text{預測} = \arg\max_i P(C_i)\prod_k P(x_k \mid C_i)$$
+  <div class="steps">
+    <p class="steps-title">範例：用上面 8 筆資料，預測 X = (Outlook = sunny, Wind = weak)</p>
+    <ol>
+      <li>先驗：P(yes) = 4/8、P(no) = 4/8</li>
+      <li>yes 類（4 筆）：P(sunny | yes) = 1/4、P(weak | yes) = 4/4</li>
+      <li>no 類（4 筆）：P(sunny | no) = 3/4、P(weak | no) = 2/4</li>
+      <li>yes：0.5 × 1/4 × 1 = 0.125；no：0.5 × 3/4 × 2/4 = 0.1875</li>
+      <li>0.1875 &gt; 0.125 → 預測 <strong>Play = no</strong>
+        <span class="why">若要寫出真正的機率：P(no | X) = 0.1875 / (0.125 + 0.1875) = 0.6。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">範例：零機率與拉普拉斯修正，X = (rain, strong)</p>
+    <ol>
+      <li>P(strong | yes) = 0/4 = 0 → yes 的乘積直接變 0，不管其他屬性多支持 yes</li>
+      <li>拉普拉斯：Outlook、Wind 各有 2 個值，分母 +2。yes：P(rain | yes) = (3 + 1)/(4 + 2) = 4/6、P(strong | yes) = (0 + 1)/6 = 1/6 → 0.5 × 4/6 × 1/6 = 0.0556</li>
+      <li>no：P(rain | no) = (1 + 1)/6 = 2/6、P(strong | no) = (2 + 1)/6 = 3/6 → 0.5 × 2/6 × 3/6 = 0.0833</li>
+      <li>仍然預測 no，但 yes 不再是 0
+        <span class="why">教科書的例子：1000 筆中 income = low 0 筆、medium 990、high 10 → 修正後 1/1003、991/1003、11/1003，和原本的比例幾乎一樣。</span></li>
+    </ol>
+  </div>
+
+  <div class="widget" id="w-nb">
+    <p class="w-title">單純貝氏計算器</p>
+    <p class="w-desc">選新資料的屬性值，看每個類別的乘積。可以切換資料：8 筆 Play 或教科書的 14 筆 buy_computer（W7 用的同一份）；教科書例子 X = (youth, medium, student = yes, fair) → yes 0.028、no 0.007 → yes。</p>
+    <div class="controls">
+      <label>資料 <select id="nb-data"><option value="play">8 筆 Play（本頁）</option><option value="buy">14 筆 buy_computer</option></select></label>
+      <label><input type="checkbox" id="nb-lap"> 拉普拉斯修正</label>
+    </div>
+    <div class="controls" id="nb-x"></div>
+    <div class="readout" id="nb-out"></div>
+  </div>
+
+  <h3>2.4 支援向量機（SVM）：目標函數</h3>
+  <div class="callout key">
+    <p class="def">SVM 的目標是在所有能分開兩類的超平面 \(w^Tx + b = 0\) 中，找邊界（margin）\(2/\lVert w \rVert\) 最大的那一個；等價於在 \(y_i(w^Tx_i + b) \ge 1\) 的限制下最小化 \(\lVert w \rVert^2/2\)。</p>
+  </div>
+  $$\min_{w, b}\ \frac{\lVert w \rVert^2}{2} \quad \text{s.t.}\quad y_i(w^Tx_i + b) \ge 1,\ \ i = 1, \dots, n \qquad (y_i \in \{-1, +1\})$$
+  $$\text{Soft margin：}\ \min_{w, b, \xi}\ \frac{\lVert w \rVert^2}{2} + C\sum_i \xi_i \quad \text{s.t.}\quad y_i(w^Tx_i + b) \ge 1 - \xi_i,\ \xi_i \ge 0$$
+  <ul>
+    <li>為什麼最小化 \(\lVert w \rVert^2/2\)：邊界 = \(2/\lVert w \rVert\)，最大化它等於最小化 \(\lVert w \rVert\)；取平方、除以 2 是為了好微分。</li>
+    <li>限制條件的意思：正類要在 \(w^Tx + b \ge 1\) 那側、負類要在 \(\le -1\) 那側，兩條線之間（邊界內）不能有訓練資料。</li>
+    <li>預測：算 \(f(x) = w^Tx + b\)，≥ 0 → +1、&lt; 0 → −1。</li>
+    <li>C 大 → 違規重罰、邊界窄（容易過度配適）；C 小 → 邊界寬、允許違規。核技巧：\(K(x, z) = \phi(x)^T\phi(z)\)，不用真的轉到高維空間。</li>
+  </ul>
+  <div class="steps">
+    <p class="steps-title">範例：給定 w、b，檢查與預測</p>
+    <ol>
+      <li>w = (1, 1)、b = −3 → 決策邊界 \(x_1 + x_2 = 3\)；邊界寬度 = \(2/\sqrt{1^2 + 1^2} = 2/\sqrt{2} = 1.414\)</li>
+      <li>訓練點 (1, 1) 標籤 −1：f = 1 + 1 − 3 = −1 → \(y f = 1 \ge 1\) ✓，剛好在邊界上 → 支援向量</li>
+      <li>訓練點 (2, 2) 標籤 +1：f = 1 → \(y f = 1\) ✓，也是支援向量</li>
+      <li>訓練點 (0, 1) 標籤 −1：f = −2 → \(y f = 2\) ✓，在邊界外</li>
+      <li>新資料 (2.2, 0.5)：f = −0.3 &lt; 0 → 預測 −1（落在邊界內，但仍依正負號分類）
+        <span class="why">只有 (1, 1) 和 (2, 2) 兩點時，最佳邊界就是它們的距離 \(\sqrt{2}\)，所以 \(\lVert w \rVert = \sqrt{2}\)，和 w = (1, 1) 一致。</span></li>
+    </ol>
+  </div>
+
+  <h3>2.5 集成（Ensemble）：錯誤率怎麼算</h3>
+  <div class="callout key">
+    <p class="def">n 個彼此獨立、錯誤率都是 ε 的基礎分類器做多數決時，集成會錯 ⇔ 超過一半的分類器同時錯，所以錯誤率是二項分布「錯的個數 ≥ ⌊n/2⌋ + 1」的機率。</p>
+  </div>
+  $$e_{ensemble} = \sum_{i = \lfloor n/2 \rfloor + 1}^{n} \binom{n}{i}\varepsilon^i(1 - \varepsilon)^{n - i}$$
+  <ul>
+    <li>講義：n = 25、ε = 0.35 → \(\sum_{i=13}^{25}\) … = 0.06。若 25 個預測完全一樣（完全相關），錯誤率還是 0.35。</li>
+    <li>前提：ε &lt; 0.5 而且分類器之間的錯誤不要高度相關；ε &gt; 0.5 時集成更差。</li>
+    <li>Bagging：取後放回抽 n 筆，每筆被抽到的機率 \(1 - (1 - 1/n)^n \to 0.632\)。Boosting：依序訓練，錯分的樣本權重提高。</li>
+  </ul>
+  <div class="steps">
+    <p class="steps-title">範例：n = 3、ε = 0.2</p>
+    <ol>
+      <li>多數決錯 ⇔ 至少 2 個錯</li>
+      <li>剛好 2 個錯：\(\binom{3}{2}0.2^2 \times 0.8 = 3 \times 0.04 \times 0.8 = 0.096\)</li>
+      <li>3 個都錯：\(0.2^3 = 0.008\)</li>
+      <li>\(e_{ensemble}\) = 0.096 + 0.008 = <strong>0.104</strong> &lt; 0.2
+        <span class="why">n = 5、ε = 0.3 的答案是 0.163（W9 計算題）。可以在 <a href="w9.html#algo">W9 的集成元件</a>驗算任何 n、ε。</span></li>
+    </ol>
+  </div>
+
+  <h3>2.6 練習題</h3>
+  <div class="quiz">
+    <p class="q">1. 在 8 筆 Play 資料中，若先用 Wind 分割，weak 那支的 6 筆（#1, 3, 4, 5, 7, 8）再用 Outlook 分割，資訊增益是多少？</p>
+    <details class="answer"><summary>看解答</summary><div>weak 支：yes 4、no 2 → Info = 0.918。sunny 3 筆（#1 no、#3 yes、#7 no → yes 1、no 2）熵 0.918；rain 3 筆（#4、5、8 全 yes）熵 0 → \(Info_{Outlook}\) = 3/6 × 0.918 = 0.459 → Gain = 0.918 − 0.459 = 0.459。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 用 14 筆 buy_computer 資料，以單純貝氏預測 X = (age = senior, income = low, student = no, credit = excellent)。</p>
+    <details class="answer"><summary>看解答</summary><div>yes：9/14 × P(senior|yes) 3/9 × P(low|yes) 3/9 × P(student=no|yes) 3/9 × P(excellent|yes) 3/9 = 0.643 × 0.0123 = 0.0079。no：5/14 × 2/5 × 1/5 × 4/5 × 3/5 = 0.357 × 0.0384 = 0.0137。預測 <strong>no</strong>。可以在上面的計算器切到 buy_computer 驗算。</div></details>
+  </div>
+  <div class="quiz" data-answer="B">
+    <p class="q">3. SVM 求得 w = (3, 4)、b = −10，邊界寬度是多少？點 (2, 1) 的預測是？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 0.2、+1</button><button data-opt="B">(B) 0.4、+1</button>
+      <button data-opt="C">(C) 0.4、−1</button><button data-opt="D">(D) 2、−1</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。\(\lVert w \rVert = \sqrt{9 + 16} = 5\) → 2/5 = 0.4。f(2, 1) = 6 + 4 − 10 = 0 ≥ 0 → +1（剛好在決策邊界上，依規則判為 +1）。</div>
+  </div>
+  <div class="quiz">
+    <p class="q">4. 7 個獨立分類器、每個錯誤率 0.4，多數決錯誤率是多少？</p>
+    <details class="answer"><summary>看解答</summary><div>至少 4 個錯：\(\binom{7}{4}0.4^4 0.6^3 + \binom{7}{5}0.4^5 0.6^2 + \binom{7}{6}0.4^6 0.6 + 0.4^7\) = 0.1935 + 0.0774 + 0.0172 + 0.0016 = 0.290。</div></details>
+  </div>
+
+  <!-- ===================== 3. 評估 ===================== -->
+  <h2 id="eval">3. 評估（Evaluation）</h2>
+
+  <h3>3.1 過度配適（Model Overfitting）</h3>
+  <ul>
+    <li>定義：訓練錯誤（training error）很低，但對沒看過的資料泛化很差（test error 高）；模型學到雜訊或偶然樣式。</li>
+    <li>Underfitting：太簡單，訓練、測試錯誤都高。Overfitting：太複雜，訓練錯誤很低、測試錯誤高。</li>
+    <li>原因：① 訓練資料太少；② 模型太複雜（決策樹太深、太多葉節點）。</li>
+    <li>選模型：選<strong>測試（驗證）錯誤最低</strong>的複雜度，不是訓練錯誤最低的。訓練資料變多，兩者差距通常變小。</li>
+  </ul>
+
+  <h3>3.2 混淆矩陣（Confusion Matrix）與指標</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th></th><th>Predicted +</th><th>Predicted −</th></tr>
+      <tr><th>Actual +</th><td>TP（真陽性）</td><td>FN（偽陰性，漏報）</td></tr>
+      <tr><th>Actual −</th><td>FP（偽陽性，誤報）</td><td>TN（真陰性）</td></tr>
+    </table>
+  </div>
+  $$Accuracy = \frac{TP + TN}{All}, \quad Precision = \frac{TP}{TP + FP}, \quad Recall = Sensitivity = TPR = \frac{TP}{TP + FN}$$
+  $$Specificity = \frac{TN}{TN + FP}, \quad FPR = \frac{FP}{FP + TN} = 1 - Specificity, \quad F_1 = \frac{2PR}{P + R}, \quad F_\beta = \frac{(1 + \beta^2)PR}{\beta^2 P + R}$$
+  <div class="steps">
+    <p class="steps-title">範例：TP 40、FN 10、FP 20、TN 30（共 100 筆）</p>
+    <ol>
+      <li>Accuracy = (40 + 30)/100 = 70%；Error rate = 30%</li>
+      <li>Precision = 40/(40 + 20) = 66.7%；Recall = 40/(40 + 10) = 80%</li>
+      <li>Specificity = 30/(30 + 20) = 60%；FPR = 20/50 = 40%</li>
+      <li>F1 = 2 × 0.667 × 0.8 / (0.667 + 0.8) = 0.727
+        <span class="why">講義的癌症練習（TP 90、FN 210、FP 140、TN 9560）：準確率 96.5%，但召回率只有 30%，不平衡資料不能只看準確率。<a href="w10.html#concepts">W10 的混淆矩陣元件</a>可以輸入任何數字驗算。</span></li>
+    </ol>
+  </div>
+
+  <h3>3.3 ROC 曲線（ROC curve）</h3>
+  <ol>
+    <li>依分類器輸出的分數（機率）<strong>由高到低</strong>排序。</li>
+    <li>門檻從最高往下降，每次多把一筆預測為正：真實是 P → 往上走 1/P 格（TPR 增加）；真實是 N → 往右走 1/N 格（FPR 增加）。</li>
+    <li>從 (0, 0) 走到 (1, 1)，把每個 (FPR, TPR) 點連起來。</li>
+    <li>AUC = 曲線下面積：1 完美、0.5 亂猜；越靠左上角越好。</li>
+  </ol>
+  <div class="steps">
+    <p class="steps-title">範例：8 筆資料，P 4 筆、N 4 筆</p>
+    <ol>
+      <li>依分數排序：0.95 P、0.85 P、0.80 N、0.70 P、0.55 N、0.45 P、0.40 N、0.30 N</li>
+      <li>點依序：(0, 0) → (0, 0.25) → (0, 0.5) → (0.25, 0.5) → (0.25, 0.75) → (0.5, 0.75) → (0.5, 1) → (0.75, 1) → (1, 1)</li>
+      <li>AUC：把每一段往右走的地方當長方形加總：0.25 × 0.5 + 0.25 × 0.75 + 0.25 × 1 + 0.25 × 1 = 0.125 + 0.1875 + 0.25 + 0.25 = <strong>0.8125</strong></li>
+      <li>例如門檻 0.70（前 4 筆預測為正）：TP 3、FP 1 → TPR 0.75、FPR 0.25
+        <span class="why"><span class="tag add">補充</span>AUC 也等於「隨機抽一個正例、一個負例，正例分數比較高的機率」：16 對中有 13 對正例在前 → 13/16 = 0.8125。</span></li>
+    </ol>
+  </div>
+
+  <h3>3.4 練習題</h3>
+  <div class="quiz" data-answer="D">
+    <p class="q">1. 某模型訓練準確率 99%、測試準確率 70%；另一個訓練 85%、測試 83%。該選哪個？這叫什麼現象？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 第一個；配適不足</button><button data-opt="B">(B) 第一個；過度配適</button>
+      <button data-opt="C">(C) 第二個；配適不足</button><button data-opt="D">(D) 第二個；第一個是過度配適</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。看測試（沒看過的資料）的表現；第一個訓練很好、測試很差，是過度配適。</div>
+  </div>
+  <div class="quiz">
+    <p class="q">2. TP 15、FN 5、FP 30、TN 150，算 Accuracy、Precision、Recall、Specificity、F1。</p>
+    <details class="answer"><summary>看解答</summary><div>All = 200。Accuracy = 165/200 = 82.5%；Precision = 15/45 = 33.3%；Recall = 15/20 = 75%；Specificity = 150/180 = 83.3%；F1 = 2 × 0.333 × 0.75 / 1.083 = 0.462。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 分數由高到低的真實標籤是 P, N, P, P, N, N（3 個 P、3 個 N），畫出 ROC 的點並算 AUC。</p>
+    <details class="answer"><summary>看解答</summary><div>點：(0, 0) → (0, 1/3) → (1/3, 1/3) → (1/3, 2/3) → (1/3, 1) → (2/3, 1) → (1, 1)。AUC = 1/3 × 1/3 + 1/3 × 1 + 1/3 × 1 = 1/9 + 2/3 = 7/9 ≈ 0.778（9 對正負例中 7 對正例在前）。</div></details>
+  </div>
+
+  <!-- ===================== 4. 分群 ===================== -->
+  <h2 id="clu">4. 分群（Clustering）</h2>
+
+  <h3>4.1 輸入矩陣的種類（Types of input matrix）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th></th><th>Data matrix（資料矩陣）</th><th>Dissimilarity matrix（相異度矩陣）</th></tr>
+      <tr><td>結構</td><td>object-by-attribute</td><td>object-by-object</td></tr>
+      <tr><td>大小</td><td>n × p（n 個物件、p 個屬性）</td><td>n × n</td></tr>
+      <tr><td>Mode</td><td>two-mode（列、欄是不同東西）</td><td>one-mode（列、欄都是物件）</td></tr>
+      <tr><td>特性</td><td>每格是屬性值</td><td>每格 d(i, j)；對稱、對角線 0，通常只寫下三角</td></tr>
+    </table>
+  </div>
+  <div class="steps">
+    <p class="steps-title">範例：從資料矩陣算出相異度矩陣（歐氏距離）</p>
+    <ol>
+      <li>資料矩陣（3 × 2）：\(x_1\) = (1, 2)、\(x_2\) = (3, 5)、\(x_3\) = (4, 2)</li>
+      <li>d(2, 1) = \(\sqrt{2^2 + 3^2} = \sqrt{13}\) = 3.606；d(3, 1) = \(\sqrt{3^2 + 0}\) = 3；d(3, 2) = \(\sqrt{1 + 9} = \sqrt{10}\) = 3.162</li>
+      <li>相異度矩陣（3 × 3，下三角）：
+        <pre class="code" style="margin:6px 0">      1      2      3
+1     0
+2     3.606  0
+3     3      3.162  0</pre>
+        <span class="why">其他屬性類型：名目 (p − m)/p、非對稱二元 (r + s)/(q + r + s)、順序先轉成 (r − 1)/(M − 1)，詳見 <a href="w11.html#concepts">W11</a>。</span></li>
+    </ol>
+  </div>
+
+  <h3>4.2 K-means：作法、性質與限制</h3>
+  <ol>
+    <li>選 K 個初始中心（centroid）。</li>
+    <li><strong>分配</strong>：每個點分給最近的中心。</li>
+    <li><strong>更新</strong>：每群的中心改成群內點的平均。</li>
+    <li>重複 2～3，直到沒有點換群。</li>
+  </ol>
+  <div class="table-wrap">
+    <table>
+      <tr><th>性質（Properties）</th><th>限制（Limitations）</th></tr>
+      <tr><td>簡單、相對有效率：O(nKdt)</td><td>要事先指定 K（用手肘法或輪廓係數挑）</td></tr>
+      <tr><td>每一步都讓 SSE 不增加，一定會收斂</td><td>常收斂到區域最小值，結果受初始中心影響（K-means++ 改善）</td></tr>
+      <tr><td>目標：最小化 \(SSE = \sum_k\sum_{x \in C_k}\lVert x - c_k \rVert^2\)</td><td>對雜訊、離群值敏感（平均會被拉走；K-medoids 較穩健）</td></tr>
+      <tr><td>每群用平均當代表（不一定是真實點）</td><td>群的大小、密度差很多時表現差；找不出非凸（non-convex）的群</td></tr>
+      <tr><td></td><td>只能用在可以算平均的數值資料（類別資料用 K-modes）</td></tr>
+    </table>
+  </div>
+  <div class="steps">
+    <p class="steps-title">範例：一維資料 2, 4, 10, 11, 12, 20, 25, 30，K = 2，初始中心 2、4</p>
+    <ol>
+      <li>第 1 輪：只有 2 離 2 比較近 → {2} | {4, 10, 11, 12, 20, 25, 30} → 中心 2、112/7 = 16</li>
+      <li>第 2 輪：4 到 2 是 2、到 16 是 12 → 去左邊；10 到 2 是 8、到 16 是 6 → 右邊 → {2, 4} | {10, …, 30} → 中心 3、108/6 = 18</li>
+      <li>第 3 輪：10 到 3 是 7、到 18 是 8 → 左；11 到 3 是 8、到 18 是 7 → 右 → {2, 4, 10} | {11, 12, 20, 25, 30} → 中心 5.33、19.6</li>
+      <li>第 4 輪：11（5.67 vs. 8.6）、12（6.67 vs. 7.6）都去左 → {2, 4, 10, 11, 12} | {20, 25, 30} → 中心 7.8、25</li>
+      <li>第 5 輪：沒有點換群 → 收斂。SSE = (5.8² + 3.8² + 2.2² + 3.2² + 4.2²) + (5² + 0 + 5²) = 80.8 + 50 = 130.8
+        <span class="why">考試時每一輪都要寫出「分配結果」和「新中心」。<a href="w11.html#algo">W11 的遊樂場</a>可以看二維版本。</span></li>
+    </ol>
+  </div>
+
+  <h3>4.3 階層式分群：凝聚式（Bottom-up / Agglomerative）與連結</h3>
+  <ol>
+    <li>每個點自成一群，寫出鄰近度（距離）矩陣。</li>
+    <li>找矩陣中最小的一格，合併那兩群，記下合併的高度（距離）。</li>
+    <li>依連結準則（linkage）更新合併後那一群到其他群的距離。</li>
+    <li>重複到只剩一群；畫成樹狀圖（dendrogram），切在某個高度得到分群。</li>
+  </ol>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Linkage</th><th>新距離怎麼算</th><th>特性</th></tr>
+      <tr><td>Single（MIN）</td><td>兩群之間最近的一對點</td><td>容易鏈結（chaining）</td></tr>
+      <tr><td>Complete（MAX）</td><td>兩群之間最遠的一對點</td><td>偏好緊密的群</td></tr>
+      <tr><td>Average（group average）</td><td>所有跨群點對距離的平均</td><td>介於兩者之間</td></tr>
+      <tr><td>Centroid</td><td>兩群中心點的距離</td><td>需要座標</td></tr>
+      <tr><td>Ward</td><td>合併後 SSE 的增加量</td><td>選增加最少的</td></tr>
+    </table>
+  </div>
+  <div class="steps">
+    <p class="steps-title">範例：講義 W11 第 70 頁的 5 點矩陣</p>
+    <ol>
+      <li>d12 = 2.3、d13 = 3.4、d14 = 1.2、d15 = 3.7、d23 = 2.0、d24 = 1.8、d25 = 2.2、d34 = 4.2、d35 = 0.7、d45 = 4.4</li>
+      <li>兩種連結的前兩步一樣：0.7 合併 {3, 5}、1.2 合併 {1, 4}</li>
+      <li>Single：d({1,4}, 2) = min(2.3, 1.8) = 1.8、d({3,5}, 2) = min(2.0, 2.2) = 2.0、d({1,4}, {3,5}) = 3.4 → 1.8 合併 {1, 2, 4} → 2.0 全部合併</li>
+      <li>Complete：d({1,4}, 2) = max = 2.3、d({3,5}, 2) = 2.2、d({1,4}, {3,5}) = 4.4 → 2.2 合併 {2, 3, 5} → 4.4 全部合併
+        <span class="why">同一個矩陣、不同連結 → 不同的兩群：single {1, 2, 4} | {3, 5}；complete {1, 4} | {2, 3, 5}。<a href="w11.html#algo">W11 的元件</a>可以逐步看矩陣更新。</span></li>
+    </ol>
+  </div>
+
+  <h3>4.4 DBSCAN：點的種類（Types of points）<span class="tag add">補充</span></h3>
+  <div class="callout key">
+    <p class="def">DBSCAN 用兩個參數 ε（Eps，鄰域半徑）和 MinPts，把每個點分成核心點、邊界點、雜訊點；彼此密度可達的核心點和它們的邊界點組成一群，雜訊不屬於任何群。</p>
+    <ul>
+      <li><strong>Core point（核心點）</strong>：ε 鄰域內（含自己）至少有 MinPts 個點。</li>
+      <li><strong>Border point（邊界點）</strong>：自己不是核心點，但落在某個核心點的 ε 鄰域內。</li>
+      <li><strong>Noise point（雜訊點／離群點）</strong>：既不是核心點也不是邊界點。</li>
+      <li>直接密度可達（directly density-reachable）：q 是核心點、p 在 q 的 ε 鄰域內。密度可達：一串直接密度可達串起來。密度相連：兩點都從同一個點密度可達。</li>
+      <li>優點：不用給 K、能找任意形狀的群、能標出雜訊。缺點：對 ε、MinPts 敏感；群的密度差很多時很難調。</li>
+      <li>注意：有些課本的 MinPts 不含點本身，考試時看題目定義。</li>
+    </ul>
+  </div>
+  <div class="steps">
+    <p class="steps-title">範例：A(1,1)、B(1,2)、C(2,1)、D(2,2)、E(3,2)、F(4,2)、G(7,6)，ε = 1.5、MinPts = 4（含自己）</p>
+    <ol>
+      <li>算每點 ε 鄰域：A {A, B, C, D}（A–D 距離 \(\sqrt{2}\) = 1.414 ≤ 1.5）、B {A, B, C, D}、C {A, B, C, D, E}、D {A, B, C, D, E}、E {C, D, E, F}、F {E, F}、G {G}</li>
+      <li>鄰域 ≥ 4 個 → 核心點：A、B、C、D、E</li>
+      <li>F 只有 2 個 → 不是核心；但它在核心點 E 的鄰域內 → 邊界點</li>
+      <li>G 只有自己，也不在任何核心點的鄰域內 → 雜訊點</li>
+      <li>A～E 的核心點彼此直接密度可達，加上邊界點 F → 一群 {A, B, C, D, E, F}；G 是雜訊</li>
+    </ol>
+  </div>
+
+  <div class="widget" id="w-db">
+    <p class="w-title">DBSCAN 點類型判斷</p>
+    <p class="w-desc">上面範例的 7 個點。調 ε 和 MinPts，看每個點的類型怎麼變；點一個點看它的 ε 鄰域（虛線圓）。</p>
+    <div class="controls">
+      <label>ε <input type="range" id="db-e" min="0.5" max="3" step="0.1" value="1.5"><span class="val" data-for="db-e"></span></label>
+      <label>MinPts（含自己）<input type="range" id="db-m" min="2" max="6" step="1" value="4"><span class="val" data-for="db-m"></span></label>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot" id="db-svg" aria-label="DBSCAN 點類型"></svg></div>
+    <div class="legend"><span><i style="border-color:var(--pos);background:var(--pos)"></i>核心點</span><span><i style="border-color:var(--c-c);background:var(--c-c)"></i>邊界點</span><span><i style="border-color:var(--text-2)"></i>雜訊點</span></div>
+    <div class="readout" id="db-out"></div>
+  </div>
+
+  <h3>4.5 練習題</h3>
+  <div class="quiz" data-answer="A">
+    <p class="q">1. 下列哪個是 dissimilarity matrix 的特性？</p>
+    <div class="opts">
+      <button data-opt="A">(A) n × n、對稱、對角線為 0</button><button data-opt="B">(B) n × p、two-mode</button>
+      <button data-opt="C">(C) 每格是一個屬性值</button><button data-opt="D">(D) 不能用在階層式分群</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。(B)(C) 是 data matrix；階層式分群正是直接用相異度矩陣。</div>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 一維資料 1, 2, 3, 8, 9, 10, 25，K = 2，初始中心 1、25。跑 K-means 到收斂，結果是什麼？這反映 K-means 的哪個限制？</p>
+    <details class="answer"><summary>看解答</summary><div>第 1 輪：1, 2, 3, 8, 9, 10 都離 1 比較近（10 到 1 是 9、到 25 是 15）→ {1, 2, 3, 8, 9, 10} | {25} → 中心 5.5、25。第 2 輪不變，收斂。離群值 25 自己佔了一群，原本明顯的兩群 {1, 2, 3}、{8, 9, 10} 被併在一起：K-means 對離群值與初始中心敏感。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 用講義第 70 頁的矩陣做 average linkage，前三次合併在什麼高度？</p>
+    <details class="answer"><summary>看解答</summary><div>0.7 {3, 5}；1.2 {1, 4}；d({1,4}, 2) = (2.3 + 1.8)/2 = 2.05、d({3,5}, 2) = (2.0 + 2.2)/2 = 2.1 → 2.05 合併 {1, 2, 4}；最後 (3.4 + 3.7 + 2.0 + 2.2 + 4.2 + 4.4)/6 = 3.317。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">4. 承 DBSCAN 範例，把 MinPts 改成 5，各點類型變成什麼？</p>
+    <details class="answer"><summary>看解答</summary><div>鄰域 ≥ 5 的只有 C、D → 核心點。A、B、E 都在 C 或 D 的鄰域內 → 邊界點。F 的鄰域 {E, F} 中沒有核心點 → 雜訊；G 雜訊。群 = {A, B, C, D, E}。可以在上面的元件把 MinPts 調成 5 驗算。</div></details>
+  </div>
+
+  <h2 id="formulas">一頁公式卡</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>主題</th><th>公式</th></tr>
+      <tr><td>Support／Confidence</td><td>\(\frac{count(X \cup Y)}{|D|}\)／\(\frac{count(X \cup Y)}{count(X)}\)</td></tr>
+      <tr><td>Lift</td><td>\(\frac{conf(X \Rightarrow Y)}{sup(Y)} = \frac{P(XY)}{P(X)P(Y)}\)；&gt; 1 正相關</td></tr>
+      <tr><td>Entropy／Gain</td><td>\(-\sum p\log_2 p\)／\(Info(D) - \sum\frac{|D_j|}{|D|}Info(D_j)\)</td></tr>
+      <tr><td>Gain ratio</td><td>\(Gain / SplitInfo\)，\(SplitInfo = -\sum\frac{|D_j|}{|D|}\log_2\frac{|D_j|}{|D|}\)</td></tr>
+      <tr><td>Gini</td><td>\(1 - \sum p_i^2\)；選加權 Gini 最小</td></tr>
+      <tr><td>Naïve Bayes</td><td>\(\arg\max_i P(C_i)\prod_k P(x_k \mid C_i)\)；Laplace：\(\frac{n_{x} + 1}{n_C + v}\)</td></tr>
+      <tr><td>SVM</td><td>\(\min \lVert w \rVert^2/2\) s.t. \(y_i(w^Tx_i + b) \ge 1\)；margin \(2/\lVert w \rVert\)</td></tr>
+      <tr><td>Ensemble</td><td>\(\sum_{i > n/2}\binom{n}{i}\varepsilon^i(1 - \varepsilon)^{n-i}\)</td></tr>
+      <tr><td>Precision／Recall</td><td>\(\frac{TP}{TP + FP}\)／\(\frac{TP}{TP + FN}\)</td></tr>
+      <tr><td>Specificity／FPR</td><td>\(\frac{TN}{TN + FP}\)／\(\frac{FP}{FP + TN}\)</td></tr>
+      <tr><td>F1</td><td>\(\frac{2PR}{P + R}\)</td></tr>
+      <tr><td>ROC</td><td>x = FPR、y = TPR；P 往上 1/P、N 往右 1/N</td></tr>
+      <tr><td>SSE</td><td>\(\sum_k\sum_{x \in C_k}\lVert x - c_k \rVert^2\)</td></tr>
+      <tr><td>Linkage</td><td>single min、complete max、average 平均</td></tr>
+      <tr><td>DBSCAN</td><td>core：\(|N_\varepsilon(p)| \ge MinPts\)；border：在 core 的鄰域；其餘 noise</td></tr>
+    </table>
+  </div>
+
+  <footer>依老師提供的期中考參考方向整理；範例數字已驗算。單純貝氏與 DBSCAN 的內容依教科書補充。</footer>
+</main>
+</div>
+</body>
+</html>
