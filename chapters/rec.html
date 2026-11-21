@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>推薦系統</title>
+  <meta name="description" content="資料探勘：推薦系統。搜尋與推薦、相關性與多樣性、顯性與隱性回饋、內容式過濾、協同過濾（使用者式、物品式、Pearson 相關、矩陣分解、NCF）、冷啟動、跨領域推薦（CCA、CFA、PLSR）">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/highlighter.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/highlighter.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="rec.js"></script>
+</head>
+<body data-chapter="rec">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">推薦系統 · 講義：DM_recommendation（投影片沒有標日期，2026/11/20 上傳）</p>
+  <h1>🎧 推薦系統</h1>
+
+  <div class="callout key">
+    <p class="def">推薦系統幫使用者找到他們可能喜歡或覺得有用的物品：它從回饋、互動以及使用者或物品的資訊學出偏好，再對每位使用者推薦預測效用最高的物品。</p>
+    <ul>
+      <li>三種任務：評分預測、互動預測（會不會點擊、觀看、購買）、Top-N 推薦（排序後推薦前 N 個）。</li>
+      <li>內容式過濾（CBF）：用物品的內容特徵比對使用者的偏好；協同過濾（CF）：用很多使用者的互動樣式，不需要內容特徵。</li>
+      <li>記憶式 CF 直接用相似使用者（使用者式）或相似物品（物品式）；模型式 CF 學一個模型，例如矩陣分解 \(\hat{R} = UV^T\)。</li>
+      <li>冷啟動：新使用者、新物品或新平台沒有互動資料，純 CF 做不出來；可用詢問偏好、內容式／混合式、熱門推薦、跨領域推薦。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>搜尋是把物品配給「查詢」（使用者明確給出）；推薦是把物品配給「使用者」（依偏好、互動與情境）。</li>
+    <li>推薦的價值：有效率地找到相關內容、發現長尾（冷門）物品、探索相關內容、依回饋個人化、配合情境；對使用者、平台、創作者／賣家都有價值，但目標不一定一致（短期點擊最大不等於長期滿意）。</li>
+    <li>顯性回饋（評分、喜歡／不喜歡、評論）直接但稀少；隱性回饋（點擊、觀看時間、購買、跳過）多但模糊：有互動不一定喜歡，沒互動不一定討厭。</li>
+    <li>使用者式 CF 用 Pearson 相關找相似使用者，用「以平均為中心」的加權偏差預測評分；矩陣分解只在已觀察到的評分上最小化誤差，再加正則化。</li>
+    <li>跨領域推薦把來源領域（例：音樂）的偏好轉移到目標領域（例：電影），方法有共享使用者因子的聯合分解、CCA、CFA、PLSR。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 推薦是什麼、為什麼需要（第 2～13 頁）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>目的</th><th>說明</th><th>例子</th></tr>
+      <tr><td>有效率地找到相關內容</td><td>推薦熟悉藝人的音樂、相似歌曲、延續播放清單</td><td>熱門推薦（依播放、購買次數排序）是最簡單的基準，也能服務沒有歷史紀錄的使用者</td></tr>
+      <tr><td>發現已知以外的內容</td><td>推薦符合興趣但不熟悉的物品，幫助發現長尾（long tail）中的冷門物品</td><td>平衡相關性與多樣性：喜歡搖滾 → 推多位搖滾藝人與子類型，而不是只推同一個樂團</td></tr>
+      <tr><td>探索相關內容</td><td>喜歡的藝人的其他作品、相關專輯與歌曲</td><td>互補物品推薦：襯衫、短褲、鞋子一起搭</td></tr>
+      <tr><td>依回饋個人化</td><td>從點擊、聆聽時間、購買、跳過推論偏好</td><td>互動歷史 → 使用者輪廓 → 個人化推薦</td></tr>
+      <tr><td>配合情境</td><td>同一個人在不同時段、活動、地點或裝置偏好不同</td><td>念書時聽安靜的音樂、運動時聽有活力的</td></tr>
+    </table>
+  </div>
+
+  <h3>2.2 顯性與隱性回饋（第 11 頁）</h3>
+  <div class="callout key">
+    <p class="def">顯性回饋是使用者直接表達的偏好（評分、喜歡／不喜歡、評論），通常很稀少；隱性回饋是從行為推論的偏好（點擊、觀看時間、購買、跳過），量多但意義模糊。</p>
+    <ul>
+      <li>有互動不一定代表喜歡（點進去才發現不喜歡）。</li>
+      <li>沒有互動不一定代表不喜歡（可能只是沒看到）。</li>
+    </ul>
+  </div>
+
+  <h3>2.3 推薦問題的形式（第 14 頁）</h3>
+  <div class="callout key">
+    <p class="def">對每位使用者 c，從候選物品 \(S_c\) 中推薦預測效用 \(\hat{u}(s, c)\) 最高的物品：\(s_c^* = \arg\max_{s \in S_c} \hat{u}(s, c)\)；Top-N 推薦則依預測分數排序取前 N 個。</p>
+    <ul>
+      <li>例：Song A 0.9、Song B 0.3、Song C 0.8 → 推薦 Song A；Top-2 是 A、C。</li>
+    </ul>
+  </div>
+
+  <h3>2.4 三大推薦方法（第 15～16 頁）</h3>
+  <ol>
+    <li><strong>內容式過濾</strong>（Content-based filtering）：比對物品特徵和使用者偏好。</li>
+    <li><strong>協同過濾</strong>（Collaborative filtering）：用跨使用者的使用者–物品互動。
+      <ul>
+        <li>記憶式：使用者式（用相似使用者的回饋）、物品式（用從互動樣式推得的物品相似度）。</li>
+        <li>模型式：從互動學一個預測模型，例如矩陣分解。</li>
+      </ul>
+    </li>
+    <li><strong>混合式</strong>（Hybrid）：結合多種策略，例如內容式加協同過濾。</li>
+  </ol>
+  <div class="table-wrap">
+    <table>
+      <tr><th></th><th>內容式過濾</th><th>協同過濾</th></tr>
+      <tr><td>資料來源</td><td>物品內容／特徵 + 這位使用者的回饋</td><td>使用者–物品互動</td></tr>
+      <tr><td>冷啟動</td><td>有特徵就能推薦新物品，但需要新使用者的資訊</td><td>沒有互動的新使用者、新物品都很難</td></tr>
+      <tr><td>多樣性</td><td>可能過度專精在熟悉的特徵</td><td>能發現內容相似度以外的物品</td></tr>
+      <tr><td>可擴展性</td><td>取決於特徵擷取與打分方式</td><td>鄰域相似度計算可能很貴</td></tr>
+      <tr><td>可解釋性</td><td>有明確特徵，通常較容易解釋</td><td>通常較難解釋</td></tr>
+      <tr><td>個人化</td><td>把物品特徵配到個人偏好</td><td>結合個人歷史與跨使用者的互動樣式</td></tr>
+    </table>
+  </div>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 內容式推薦（第 17～27 頁）</h3>
+  <div class="callout key">
+    <p class="def">內容式推薦假設物品的內容特徵能預測使用者偏好：把每個物品表示成特徵向量 \(x_s\)，從使用者的過去回饋學一個偏好模型 \(f_c\)，預測分數 \(\hat{u}(s, c) = f_c(x_s)\)，再依分數排序。</p>
+    <ul>
+      <li><strong>相似度式</strong>：① 物品用內容特徵向量表示；② 把喜歡的物品的特徵彙總成使用者輪廓 \(w_c\)；③ 算輪廓和候選物品的相似度 \(\hat{u}(s, c) = sim(w_c, x_s)\)；④ 推薦分數最高的 N 個。使用者輪廓和物品向量在同一個特徵空間。</li>
+      <li><strong>分類式</strong>：對每位使用者把推薦當成二元分類：輸入物品特徵，標籤是明確的喜歡（1）／不喜歡（0），輸出 \(p_{cs} = P(y_{cs} = 1 \mid x_s; \theta_c)\) 當推薦分數。沒被觀察到的物品是「沒有標籤」，不是自動當成不喜歡。</li>
+      <li>其他監督式形式：評分預測（分類或迴歸）、觀看時間預測（迴歸）。</li>
+    </ul>
+  </div>
+  <ul>
+    <li>相似度量度：餘弦相似度、內積、Jaccard 相似度是越大越前面；歐氏距離是越小越前面。內積受向量長度影響；餘弦只比方向；Jaccard 適合集合或二元特徵。</li>
+  </ul>
+
+  <div class="widget" id="w-cbf">
+    <p class="w-title">音樂內容式推薦</p>
+    <p class="w-desc">講義第 22 頁：曲風依序是 Pop、Rock、R&amp;B、Jazz、Classical、Reggae。使用者 u = [10, 8, 0, 8, 0, 0]、Song A = [9, 7, 0, 6, 0, 0] → cos = 0.997195；Song B = [1, 0, 10, 0, 0, 6] → cos = 0.056581。<span class="tag add">補充</span>Song C 是自己加的：方向和使用者一樣但數值很小，可以看出餘弦和內積的差別。</p>
+    <div class="controls"><label>量度 <select id="cb-m"><option value="cos">餘弦相似度（越大越好）</option><option value="dot">內積（越大越好）</option><option value="euc">歐氏距離（越小越好）</option></select></label></div>
+    <div class="table-wrap" id="cb-table"></div>
+    <div class="readout" id="cb-out"></div>
+  </div>
+
+  <h3>3.2 內容式推薦的限制（第 25～27 頁）</h3>
+  <ol>
+    <li><strong>內容理解有限</strong>：高層語意特徵很難擷取；有些偏好很抽象或主觀，例如電影的氛圍或帶給觀眾的情緒衝擊。</li>
+    <li><strong>特徵區分力不足</strong>：特徵可能漏掉使用者在意的差異。兩首歌同曲風，但情緒、旋律、歌詞主題不同；只表示曲風就分不出來。</li>
+    <li><strong>過度專精</strong>（Overspecialization）：推薦和以前喜歡的太像，多樣性低、探索少，發現不了歷史中沒出現過的興趣。</li>
+    <li><strong>使用者冷啟動</strong>：新使用者互動少，一開始很難建出準確的輪廓；有好的內容特徵時，物品冷啟動比較不嚴重。</li>
+  </ol>
+
+  <h3>3.3 協同過濾（Collaborative Filtering，第 28～35 頁）</h3>
+  <div class="callout key">
+    <p class="def">協同過濾從跨使用者的使用者–物品互動樣式預測偏好（評分、點擊、購買等回饋），純 CF 不需要物品內容特徵；目標是預測缺少的評分，或為每位使用者排序候選物品。</p>
+    <ul>
+      <li>使用者式（User-based）：Alice 和 Amy 在共同評過的桌遊上偏好一致；Amy 喜歡《富饒之城》→ 預測 Alice 也可能喜歡。</li>
+      <li>物品式（Item-based）：《風聲》和《三國殺》在同時評過兩者的使用者中回饋樣式一致；Bob 喜歡《風聲》→ 預測他也可能喜歡《三國殺》。</li>
+      <li>記憶式（鄰域式）方法：從觀察到的互動矩陣算使用者或物品的相似度，彙總相關鄰居的回饋來預測；簡單、好解釋；基本方法不另外擬合模型，但可以預先算好相似度與鄰居。</li>
+    </ul>
+  </div>
+
+  <h3>3.4 評分尺度的差異與 Pearson 相關（第 36～44 頁）</h3>
+  <div class="callout key">
+    <p class="def">不同使用者用評分尺度的習慣不同（有人一律給高分），所以比較的是「相對於自己平均的偏差」：Pearson 相關比較以平均為中心的評分樣式，預測時也用鄰居的偏差加權後，再加回目標使用者的平均。</p>
+    <ul>
+      <li>例：A 平均 4.5、給某物品 4.0 → 偏差 −0.5（其實不太喜歡）；B 平均 2.0、給 3.0 → 偏差 +1.0（其實很喜歡）。</li>
+      <li>另一種做法：只建模相對偏好（這個使用者喜歡哪個勝過哪個）。</li>
+      <li>四個設計問題：怎麼量相似度？選幾個鄰居？怎麼彙總鄰居的評分？要不要納入負相似度的使用者？</li>
+      <li>講義的約定：Pearson 相似度用<strong>共同評過的物品</strong>算平均；預測時用每位使用者<strong>所有已評分</strong>的平均。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-ucf">
+    <p class="w-title">使用者式 CF：預測 Alice 對 Item5 的評分</p>
+    <p class="w-desc">講義第 38～43 頁：Alice 與 User1～4 的 Pearson 相似度是 0.85、0.71、0.00、−0.79；選相似度最高的 k = 2 位鄰居（User1、User2）。可以直接改評分，或改 k、要不要納入負相似度。</p>
+    <div class="table-wrap" id="uc-table"></div>
+    <div class="controls">
+      <label>鄰居數 k <input type="range" id="uc-k" min="1" max="4" step="1" value="2"><span class="val" data-for="uc-k"></span></label>
+      <label><input type="checkbox" id="uc-neg"> 納入負相似度</label>
+      <button class="btn" type="button" id="uc-reset">還原講義評分</button>
+    </div>
+    <div class="readout" id="uc-out"></div>
+  </div>
+
+  <h3>3.5 模型式協同過濾與矩陣分解（第 46～55 頁）</h3>
+  <div class="callout key">
+    <p class="def">矩陣分解把稀疏的 m × n 評分矩陣近似成 \(\hat{R} = UV^T\)：U（m × k）是使用者潛在因子、V（n × k）是物品潛在因子，預測評分 \(\hat{r}_{cs} = u_c^T v_s\)。</p>
+    <ul>
+      <li>核心問題：觀察到的互動和所有可能的使用者–物品配對相比極度稀疏（講義例：只有 15% 被觀察到），推薦可以看成缺失值預測（matrix completion）。</li>
+      <li>只用觀察到的評分訓練（缺的不算進損失），再加正則化懲罰太大的因子值、減少過度配適；用隨機梯度下降（SGD）或交替最小平方（ALS）最佳化。</li>
+      <li>標準的 SVD 不能直接處理缺失值，所以改成只在觀察到的格子上最小化誤差。</li>
+      <li>潛在向量不是人工定義的，是系統從資料自動學的。講義用「刺激度、合作性、對抗性、心機度、策略性」來比喻桌遊的潛在維度，但只是示意：學出來的維度不一定對應有名字的屬性。</li>
+      <li>互動樣式相似的使用者或物品，可能學到相似的潛在表示；使用者和物品投影到同一個潛在空間。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-mf">
+    <p class="w-title">矩陣分解：用 SGD 補齊評分矩陣</p>
+    <p class="w-desc"><span class="tag add">補充</span>6 位使用者 × 6 部電影的玩具資料（1～5 分，空格是沒評過）：前三部偏動作、後三部偏文藝。按「訓練」看損失下降，黃底是補出來的預測。把 k 設成 1、λ 設成 0 比較看看。</p>
+    <div class="controls">
+      <label>潛在維度 k <input type="range" id="mf-k" min="1" max="3" step="1" value="2"><span class="val" data-for="mf-k"></span></label>
+      <label>正則化 λ <input type="range" id="mf-l" min="0" max="0.5" step="0.05" value="0.05"><span class="val" data-for="mf-l"></span></label>
+      <button class="btn primary" type="button" id="mf-train">訓練 50 個 epoch ▶</button>
+      <button class="btn" type="button" id="mf-reset">重設</button>
+    </div>
+    <div class="row">
+      <div class="col" style="flex:1 1 320px"><div class="table-wrap" id="mf-table" style="margin:0"></div></div>
+      <div class="col" style="flex:1 1 220px"><div class="canvas-wrap" style="padding:6px"><svg class="plot" id="mf-svg" aria-label="訓練損失"></svg></div></div>
+    </div>
+    <div class="readout" id="mf-out"></div>
+  </div>
+
+  <h3>3.6 神經協同過濾（Neural CF，第 54～55 頁）</h3>
+  <ul>
+    <li>NCF（WWW 2017）：把使用者和物品的 ID 映射成學出來的嵌入（embedding），再用神經網路學使用者–物品的互動函數：從 MF 的 \(\hat{r}_{cs} = u_c^T v_s\) 換成 \(\hat{r}_{cs} = f_\theta(c, s)\)。</li>
+    <li>NeuMF：結合 GMF（廣義矩陣分解，元素相乘）與 MLP（多層感知器）兩條路徑。</li>
+  </ul>
+
+  <h3>3.7 冷啟動問題（第 57～59 頁）</h3>
+  <div class="callout key">
+    <p class="def">冷啟動是 CF 從歷史互動學偏好，但新使用者或新物品幾乎沒有互動紀錄時，純 CF 估不出可靠的相似度或潛在向量。</p>
+    <ul>
+      <li>三種類型：新使用者問題、新物品問題（新電影、商品、歌曲）、系統冷啟動（整個平台是新的）。</li>
+      <li>解法：① 詢問初始偏好（請新使用者選喜歡的物品、藝人、類別）；② 內容式與混合式推薦；③ 熱門推薦當作新使用者的初始備案；④ 跨領域推薦：從另一個領域轉移有用的偏好資訊。</li>
+    </ul>
+  </div>
+
+  <h3>3.8 跨領域推薦（Cross-domain，第 60～69 頁）</h3>
+  <div class="callout key">
+    <p class="def">跨領域推薦用來源領域（提供知識）的資訊改善目標領域（要改善推薦的地方）的推薦：例如使用者是電影的新使用者，但有大量聽音樂的紀錄，能不能用音樂偏好推薦電影？</p>
+    <ul>
+      <li>領域可以在物品類別（驚悚片 vs. 喜劇）、內容類型（電影 vs. 影集）、商品類別（電影 vs. 書）、平台（Disney+ vs. Netflix）上不同。</li>
+      <li>共享表示學習：不同領域的特徵空間可能不同，學出對齊的潛在表示來捕捉可轉移的偏好；用共同使用者或其他跨領域連結把領域接起來。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>方法</th><th>做法</th><th>目標</th></tr>
+      <tr><td>聯合矩陣分解</td><td>兩個領域共用使用者因子 U，各自有物品因子：\(\hat{R}_{music} = UV_{music}^T\)、\(\hat{R}_{movie} = UV_{movie}^T\)，兩邊的觀察互動一起訓練</td><td>同一位使用者在各領域用同一個潛在向量</td></tr>
+      <tr><td>CCA（典型相關分析）</td><td>學兩組線性投影 \(w_x, w_y\)</td><td>讓投影後的兩個視角相關性最大：\(\max corr(Xw_x, Yw_y)\)</td></tr>
+      <tr><td>CFA（跨模態因子分析，ACM MM 2003）</td><td>學投影 \(W_x, W_y\)，限制 \(W_x^TW_x = I\)、\(W_y^TW_y = I\)</td><td>讓配對樣本在潛在空間中距離最小：\(\min \lVert XW_x - YW_y \rVert_F^2\)</td></tr>
+      <tr><td>PLSR（偏最小平方迴歸，ACM TIST 2018）</td><td>降維得到潛在成分，再用它們預測目標輸出</td><td>選交叉共變異數大的成分：\(\max cov(Xw_x, Yw_y)\)，\(\lVert w_x \rVert = \lVert w_y \rVert = 1\)</td></tr>
+    </table>
+  </div>
+  <ul>
+    <li>CCA 的兩個資料矩陣要先中心化，n 筆配對樣本：\(X \in \mathbb{R}^{n \times d_x}\)、\(Y \in \mathbb{R}^{n \times d_y}\)，對應的列代表同一位使用者在兩個領域。</li>
+    <li>延伸：非線性對齊（Kernel CCA、Deep CCA）、對比式表示學習（例：用 triplet loss 對齊跨領域相關的使用者或物品、CLIP 式的方法）。</li>
+  </ul>
+  <div class="callout warn">
+    <p><span class="tag chk">待確認</span>講義文字只擷取到第 70 頁（跨領域推薦的延伸，「CLIP-style」之後中斷），之後若還有內容（例如推薦系統的評估指標）沒擷取到，請對照原始投影片。第 68～69 頁 PLSR 的矩陣推導是圖片，文字擷取很亂，這裡只整理了目標函數。</p>
+  </div>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 推薦問題（第 14、18 頁）</h3>
+  $$s_c^* = \arg\max_{s \in S_c} \hat{u}(s, c), \qquad \hat{u}(s, c) = f_c(x_s) = sim(w_c, x_s)$$
+  <h3>4.2 相似度量度 <span class="tag add">補充</span></h3>
+  $$\cos(a, b) = \frac{a \cdot b}{\lVert a \rVert \lVert b \rVert}, \qquad Jaccard(A, B) = \frac{|A \cap B|}{|A \cup B|}$$
+  <h3>4.3 Pearson 相關（第 40 頁）</h3>
+  $$sim(a, b) = \frac{\sum_{p \in P}(r_{a,p} - \bar{r}_a)(r_{b,p} - \bar{r}_b)}{\sqrt{\sum_{p \in P}(r_{a,p} - \bar{r}_a)^2}\sqrt{\sum_{p \in P}(r_{b,p} - \bar{r}_b)^2}}$$
+  <p>P 是 a、b 都評過的物品集合，\(\bar{r}_a\)、\(\bar{r}_b\) 都在 P 上計算。</p>
+  <h3>4.4 預測評分（第 43 頁）</h3>
+  $$\hat{r}_{a,p} = \bar{r}_a + \frac{\sum_{b \in N_k(a)} sim(a, b)\,(r_{b,p} - \bar{r}_b)}{\sum_{b \in N_k(a)} |sim(a, b)|}$$
+  <p>\(N_k(a)\)：使用者 a 的鄰居中評過物品 p 的；這裡的平均是每位使用者所有已評分的平均。</p>
+  <h3>4.5 矩陣分解（第 52 頁）</h3>
+  $$\min_{U, V} \sum_{(c, s) \in \Omega} \left(r_{cs} - u_c^T v_s\right)^2 + \lambda\left(\lVert U \rVert_F^2 + \lVert V \rVert_F^2\right), \qquad \hat{R} = UV^T$$
+  <p>Ω 是觀察到的評分；缺失（講義用 −1 表示）不算進損失。<span class="tag add">補充</span>SGD 對每個觀察到的 \(r_{cs}\)：\(e = r_{cs} - u_c^Tv_s\)，\(u_c \leftarrow u_c + \eta(e\,v_s - \lambda u_c)\)，\(v_s \leftarrow v_s + \eta(e\,u_c - \lambda v_s)\)。</p>
+  <h3>4.6 跨領域（第 63～67 頁）</h3>
+  $$\text{CCA: } \max_{w_x, w_y} corr(Xw_x, Yw_y), \qquad \text{CFA: } \min_{W_x, W_y} \lVert XW_x - YW_y \rVert_F^2$$
+  $$\text{PLSR: } \max_{w_x, w_y} cov(Xw_x, Yw_y) \ \text{ s.t. } \lVert w_x \rVert = \lVert w_y \rVert = 1$$
+
+  <h2 id="examples">5. 範例演算</h2>
+  <div class="steps">
+    <p class="steps-title">例一：音樂的餘弦相似度（第 22 頁）</p>
+    <ol>
+      <li>u = [10, 8, 0, 8, 0, 0]：\(\lVert u \rVert = \sqrt{100 + 64 + 64} = \sqrt{228} = 15.10\)</li>
+      <li>Song A = [9, 7, 0, 6, 0, 0]：u · A = 90 + 56 + 48 = 194，\(\lVert A \rVert = \sqrt{166} = 12.88\) → cos = 194 / (15.10 × 12.88) = 0.997195</li>
+      <li>Song B = [1, 0, 10, 0, 0, 6]：u · B = 10，\(\lVert B \rVert = \sqrt{137} = 11.70\) → cos = 10 / (15.10 × 11.70) = 0.056581</li>
+      <li>Song A 排在 Song B 前面
+        <span class="why">使用者偏好 Pop、Rock、Jazz；Song A 也集中在這三種，Song B 則是 R&amp;B 和 Reggae。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：使用者式 CF 預測 Alice 的 Item5（第 38～43 頁）</p>
+    <ol>
+      <li>共同評過 Item1～4：Alice = 5, 3, 4, 4（平均 4）；User1 = 3, 1, 2, 3（平均 2.25）</li>
+      <li>偏差：Alice = 1, −1, 0, 0；User1 = 0.75, −1.25, −0.25, 0.75 → 分子 0.75 + 1.25 + 0 + 0 = 2；分母 \(\sqrt{2} \times \sqrt{2.75}\) = 2.345 → sim = 0.85</li>
+      <li>同理 sim(Alice, User2) = 0.71、User3 = 0.00、User4 = −0.79 → 取 k = 2：User1、User2</li>
+      <li>預測用全部評分的平均：\(\bar{r}_{Alice}\) = 4、\(\bar{r}_{User1}\) = (3 + 1 + 2 + 3 + 3)/5 = 2.4、\(\bar{r}_{User2}\) = (4 + 3 + 4 + 3 + 5)/5 = 3.8</li>
+      <li>\(\hat{r} = 4 + \frac{0.85 \times (3 - 2.4) + 0.71 \times (5 - 3.8)}{0.85 + 0.71} = 4 + \frac{0.512 + 0.849}{1.560} = 4.87\)
+        <span class="why"><span class="tag add">補充</span>講義第 42 頁的評分矩陣有給，最後的預測值是用講義第 43 頁的公式算出來的。若改用共同評分上的平均（2.25、3.5），會得到 5.09，超過 5 分上限，所以講義才特別規定預測要用全部評分的平均。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例三：負相似度也納入（第 44 頁）</p>
+    <ol>
+      <li>Alice 的平均 3；sim(Alice, User1) = −0.8，User1 平均 2.8、對目標曲風評 2；sim(Alice, User2) = 1，User2 平均 3.5、評 5</li>
+      <li>\(\hat{r} = 3 + \frac{(-0.8)(2 - 2.8) + 1 \times (5 - 3.5)}{|-0.8| + |1|} = 3 + \frac{0.64 + 1.5}{1.8} = 4.19\)
+        <span class="why">User1 和 Alice 口味相反，他給低分（低於自己的平均）反而讓 Alice 的預測變高。分母要用相似度的絕對值。<span class="tag chk">待確認</span>這頁的評分表是圖片，文字擷取很亂，各使用者的平均與評分是從算式反推的。</span></li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>搜尋 vs. 推薦</td><td>搜尋：配給明確的查詢</td><td>推薦：配給使用者（偏好、互動、情境）</td><td>有沒有明確的查詢</td></tr>
+      <tr><td>顯性 vs. 隱性回饋</td><td>顯性：評分、讚，直接但稀少</td><td>隱性：點擊、觀看時間，多但模糊</td><td>沒互動 ≠ 不喜歡</td></tr>
+      <tr><td>內容式 vs. 協同過濾</td><td>內容式：物品特徵 + 自己的回饋</td><td>CF：很多人的互動，不需要特徵</td><td>新物品：內容式可以、CF 不行</td></tr>
+      <tr><td>使用者式 vs. 物品式 CF</td><td>使用者式：找相似的使用者</td><td>物品式：找相似的物品</td><td>相似度是在列之間還是欄之間算</td></tr>
+      <tr><td>記憶式 vs. 模型式 CF</td><td>記憶式：直接用互動矩陣算相似度</td><td>模型式：學潛在因子（MF、NCF）</td><td>有沒有訓練一個模型</td></tr>
+      <tr><td>餘弦 vs. 內積</td><td>餘弦：只看方向</td><td>內積：方向和長度都算</td><td>小數值但同方向：餘弦高、內積低</td></tr>
+      <tr><td>Pearson 的兩種平均</td><td>算相似度：共同評過的物品上的平均</td><td>算預測：所有已評分的平均</td><td>講義第 43 頁特別說明</td></tr>
+      <tr><td>MF vs. SVD</td><td>MF：只在觀察到的格子上最小化誤差</td><td>標準 SVD：需要完整矩陣</td><td>缺失值要不要先補</td></tr>
+      <tr><td>CCA vs. CFA vs. PLSR</td><td>CCA：相關最大；CFA：距離最小</td><td>PLSR：共變異數最大，再迴歸預測</td><td>看目標函數</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="B">
+    <p class="q">1. 一部剛上架、還沒有人看過的電影，哪種方法最可能推薦得出來？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 使用者式協同過濾</button><button data-opt="B">(B) 內容式推薦</button>
+      <button data-opt="C">(C) 物品式協同過濾</button><button data-opt="D">(D) 矩陣分解</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。新物品沒有任何互動，CF（不論記憶式或模型式）都學不到它；內容式只要有物品特徵（類型、演員、導演）就能比對使用者輪廓。</div>
+  </div>
+  <div class="quiz" data-answer="C">
+    <p class="q">2. 為什麼使用者式 CF 要用「以平均為中心」的預測公式？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 讓計算比較快</button><button data-opt="B">(B) 讓預測值一定是整數</button>
+      <button data-opt="C">(C) 消除使用者評分習慣（偏高或偏低）的差異</button><button data-opt="D">(D) 避免相似度是負的</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。有人習慣給高分、有人習慣給低分；比較「相對於自己平均的偏差」才看得出真正的喜好程度。</div>
+  </div>
+  <div class="quiz" data-answer="A">
+    <p class="q">3. 矩陣分解的損失函數只對哪些格子算誤差？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 已觀察到的評分</button><button data-opt="B">(B) 所有格子，缺失的當 0</button>
+      <button data-opt="C">(C) 只有缺失的格子</button><button data-opt="D">(D) 對角線上的格子</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。缺失值不代表 0 分（也不代表不喜歡），把它當 0 會讓模型學到錯的東西；只在 Ω 上算誤差，再加正則化。</div>
+  </div>
+  <div class="quiz" data-answer="D">
+    <p class="q">4. 使用者輪廓 u = [2, 2, 0]，物品 X = [1, 1, 0]、Y = [5, 3, 1]。用餘弦和內積排序，結果分別是？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 都是 X 在前</button><button data-opt="B">(B) 都是 Y 在前</button>
+      <button data-opt="C">(C) 餘弦 Y 在前、內積 X 在前</button><button data-opt="D">(D) 餘弦 X 在前、內積 Y 在前</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。cos(u, X) = 1（方向相同）、cos(u, Y) = 16/(2.83 × 5.92) = 0.956；內積 u · X = 4、u · Y = 16。內積會被向量長度放大。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 為什麼說「沒有互動不一定代表不喜歡」？這對訓練有什麼影響？</p>
+    <details class="answer"><summary>看解答</summary><div>使用者可能只是沒看到那個物品（曝光不足），而不是看了不喜歡。若把所有沒互動的都當成負例，模型會學到「沒被曝光的物品＝不好」，冷門物品更難被推薦。所以分類式推薦把未觀察到的物品當成「沒有標籤」，矩陣分解也只在觀察到的格子上算誤差；用隱性回饋時通常要另外抽負樣本並小心處理。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 內容式推薦的「過度專精」是什麼？混合式推薦怎麼改善？</p>
+    <details class="answer"><summary>看解答</summary><div>內容式只推薦和過去喜歡的物品特徵相似的東西，結果越推越窄（喜歡過一首爵士，就只推爵士），發現不了使用者沒表現過的興趣。加入 CF 可以從「和你相似的人還喜歡什麼」帶進內容相似度以外的物品，提高多樣性；內容式則反過來補 CF 的物品冷啟動。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <div class="quiz">
+    <p class="q">1. 驗算講義的 sim(Alice, User2) = 0.71（共同評過 Item1～4：Alice 5, 3, 4, 4；User2 4, 3, 4, 3）。</p>
+    <details class="answer"><summary>看解答</summary><div>平均：Alice 4、User2 3.5。偏差：Alice 1, −1, 0, 0；User2 0.5, −0.5, 0.5, −0.5。分子 = 0.5 + 0.5 + 0 + 0 = 1；分母 = \(\sqrt{2} \times \sqrt{1}\) = 1.414 → sim = 0.707 ≈ 0.71。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 承例二，若改成 k = 3（加入 sim = 0 的 User3，User3 對 Item5 評 4、全部評分平均 3.2），預測會變嗎？</p>
+    <details class="answer"><summary>看解答</summary><div>不會。User3 的權重是 0，分子分母都不變，預測還是 4.87。可以在使用者式 CF 元件把 k 調成 3 驗證。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 你負責一個剛上線的音樂串流平台，沒有任何聆聽紀錄。請規劃前三個月的推薦策略。</p>
+    <details class="answer"><summary>看解答</summary><div>系統冷啟動：① 註冊時請使用者選喜歡的曲風、藝人（詢問初始偏好）；② 用歌曲的內容特徵（曲風、節奏、情緒、歌詞）做內容式推薦；③ 熱門榜當備案；④ 若和其他服務（例如影音平台）有共同使用者，可用跨領域方法（共享使用者因子、CCA）轉移偏好；⑤ 累積足夠互動後，逐步加入協同過濾、矩陣分解，變成混合式系統，並兼顧相關性與多樣性。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>推薦 = 對使用者 c 推 \(\arg\max_s \hat{u}(s, c)\)；任務：評分預測、互動預測、Top-N。</li>
+    <li>搜尋配查詢、推薦配使用者；熱門推薦是最簡單的基準。要平衡相關性與多樣性。</li>
+    <li>顯性回饋稀少但直接；隱性回饋多但模糊（有互動 ≠ 喜歡、沒互動 ≠ 討厭）。</li>
+    <li>內容式：物品特徵 + 使用者輪廓，相似度式或分類式；限制：內容理解有限、特徵區分力不足、過度專精、使用者冷啟動。</li>
+    <li>相似度：餘弦（方向）、內積（含長度）、Jaccard（集合）、歐氏距離（越小越好）。講義：cos(u, A) = 0.997、cos(u, B) = 0.057。</li>
+    <li>CF：記憶式（使用者式、物品式）＋ 模型式（MF、NCF）；純 CF 不需要內容特徵。</li>
+    <li>Pearson 用共同評分的平均；預測 \(\hat{r} = \bar{r}_a + \sum sim(r_b - \bar{r}_b)/\sum|sim|\) 用全部評分的平均。講義：0.85、0.71、0、−0.79 → k = 2 → 4.87。</li>
+    <li>MF：\(\hat{R} = UV^T\)，只在觀察到的評分上算誤差 + \(\lambda(\lVert U \rVert_F^2 + \lVert V \rVert_F^2)\)；SGD 或 ALS。</li>
+    <li>冷啟動：新使用者、新物品、系統；解法：詢問偏好、內容式／混合式、熱門、跨領域。</li>
+    <li>跨領域：共享使用者因子聯合分解；CCA 最大相關、CFA 最小距離、PLSR 最大共變異數再迴歸。</li>
+  </ol>
+
+  <footer>講義：DM_recommendation.pdf</footer>
+</main>
+</div>
+</body>
+</html>

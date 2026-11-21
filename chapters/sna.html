@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>社群網路探勘</title>
+  <meta name="description" content="資料探勘：社群網路探勘。中心性（度、介數、接近、特徵向量）、社群偵測（clique、n-clique、n-clan、n-club、k-plex、k-core、KL、Girvan–Newman、模組度）、連結預測（共同鄰居、Jaccard、Adamic–Adar、偏好連結）、資訊擴散（LTM、ICM、影響力最大化、SI／SIR 傳染病模型）">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/highlighter.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/highlighter.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="sna.js"></script>
+</head>
+<body data-chapter="sna">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">社群網路探勘 · 講義：DM_social_network（投影片沒有標日期，2026/11/20 上傳）</p>
+  <h1>🕸️ 社群網路探勘</h1>
+
+  <div class="callout key">
+    <p class="def">社群網路把社會行動者（人、組織、帳號）當成節點、把他們之間的關係（友誼、溝通、合作、信任）當成邊，表示成圖 G = (V, E)；社群網路探勘從網路結構與屬性中找出有用的樣式並建立預測模型。</p>
+    <ul>
+      <li>四大任務：① 中心性分析（誰的位置重要）；② 社群偵測（哪些節點自成一群）；③ 連結預測（哪些邊會出現）；④ 資訊擴散（訊息怎麼傳開）。</li>
+      <li>四種中心性：度（直接連結多）、介數（在很多最短路徑上）、接近（到其他人平均距離短）、特徵向量（連到重要的人）。</li>
+      <li>好的社群分法：群內邊多、群間邊少；模組度 Q 衡量「群內邊比隨機期望多多少」。</li>
+      <li>擴散模型：線性門檻模型（LTM）看鄰居影響力總和、獨立串聯模型（ICM）每條邊只有一次機會；傳染病模型 SI、SIR、SIS、SIRS。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>邊可以是有向或無向（追蹤 vs. 互為好友）、加權或不加權（溝通頻率 vs. 有沒有連結）。即使是小團體，關係網也可能很複雜（講義引用 1981 年 Peanuts 漫畫）。</li>
+    <li>中心性：不同量度可能把同一批節點排出不同順序，「重要」取決於想量什麼；結構上重要不一定等於實際有影響力。</li>
+    <li>社群偵測和分群的差別：分群看物件的特徵相似度，社群偵測看連結樣式；可以把社群偵測看成以網路結構為依據的分群。方法分成員式（clique 及其放寬）與群體式（圖分割、模組度最大化）。</li>
+    <li>連結預測：同質性（相似的人會連在一起）與三元閉包（有共同朋友的人會變朋友）→ 用共同鄰居、Jaccard、Adamic–Adar、偏好連結打分數排序，或用這些分數當特徵訓練分類器、用 GNN 學節點表示。</li>
+    <li>資訊擴散：漸進式模型（啟動後一直保持啟動）有 LTM、ICM；影響力最大化是在預算 k 下選種子集合讓期望擴散 σ(S) 最大；傳染病模型允許康復或再次易感。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 為什麼中心性重要（第 8～11 頁）</h3>
+  <ul>
+    <li>少數法則（The Law of the Few，Malcolm Gladwell《引爆趨勢》）：少數行動者在訊息傳播上扮演不成比例的角色。</li>
+    <li>三種社會角色：<strong>連結者</strong>（Connectors，認識不同圈子的很多人，幫訊息跨群傳遞）、<strong>專家</strong>（Mavens，蒐集、評估某領域的資訊並樂於分享）、<strong>推銷員</strong>（Salesmen，有說服力，讓別人採取行動）。這些角色可以重疊；中心性量度只看網路位置。</li>
+    <li>網路位置的差別：有人直接連結很多、有人是不同群之間的橋、有人能用很短的路徑到達其他人。</li>
+  </ul>
+
+  <h3>2.2 四種中心性（第 12～23 頁）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>「重要」的意思</th><th>中心性</th><th>定義</th></tr>
+      <tr><td>直接連結最多</td><td>度中心性（Degree）</td><td>直接連結的數量</td></tr>
+      <tr><td>在很多最短路徑上</td><td>介數中心性（Betweenness）</td><td>所有節點對之間的最短路徑中，經過該節點的比例總和</td></tr>
+      <tr><td>到其他節點的平均距離短</td><td>接近中心性（Closeness）</td><td>到其他節點最短距離的平均的倒數</td></tr>
+      <tr><td>連到其他重要的節點</td><td>特徵向量中心性（Eigenvector）</td><td>鄰居的中心性越高，自己越高</td></tr>
+    </table>
+  </div>
+  <ul>
+    <li><strong>度</strong>：鄰居越多、直接接觸越多、潛在影響越大。正規化：除以 n − 1（簡單無向圖中一個節點最多連 n − 1 個）。限制：只看局部，鄰居多不代表能到達網路的其他部分。</li>
+    <li><strong>介數</strong>：當橋梁或掮客（broker）、控制資訊流、連接網路的不同部分；度可能很低但戰略地位很高。每個節點對的功勞平均分給它的各條最短路徑。</li>
+    <li><strong>接近</strong>：全域可及性；靠最短路徑傳訊時溝通有效率。接近度看的是圖上的距離，不是畫出來的位置。</li>
+    <li><strong>特徵向量</strong>：「不只看你有多少朋友，還看你的朋友是誰」；鄰居少但鄰居都很重要的節點，分數可能更高。</li>
+  </ul>
+
+  <div class="widget" id="w-cent">
+    <p class="w-title">中心性計算器</p>
+    <p class="w-desc">選一張圖和一種中心性，節點下方的數字是分數，表格是排名。講義的例子：路徑 A–B–C–D–E 的介數是 0, 3, 4, 3, 0；加上 F 的圖，接近度是 5/13、5/9、5/7、5/9、5/13、5/11；三個點的路徑，特徵向量是 0.7071、1、0.7071（λ = 1.4142）。特徵向量模式可以拖動「迭代次數」看分數怎麼穩定下來。</p>
+    <div class="controls">
+      <label>圖 <select id="ce-g"><option value="path">路徑 A–E（第 17 頁）</option><option value="close" selected>路徑 + F（第 20 頁）</option><option value="p3">三點路徑（第 22 頁）</option><option value="bridge">兩群加一座橋</option><option value="star">星形 + 尾巴</option></select></label>
+      <label>中心性 <select id="ce-m"><option value="deg">度</option><option value="btw">介數</option><option value="clo">接近</option><option value="eig">特徵向量</option></select></label>
+      <label id="ce-it-l" hidden>迭代次數 <input type="range" id="ce-it" min="0" max="20" step="1" value="20"><span class="val" data-for="ce-it"></span></label>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="graph" id="ce-svg" aria-label="網路圖"></svg></div>
+    <div class="row">
+      <div class="col" style="flex:1 1 300px"><div class="table-wrap" id="ce-table" style="margin:0"></div></div>
+      <div class="col" style="flex:1 1 260px"><div class="readout" id="ce-out" style="margin-top:0"></div></div>
+    </div>
+  </div>
+
+  <h3>2.3 社群結構與社群偵測（第 26～29 頁）</h3>
+  <div class="callout key">
+    <p class="def">社群結構是一群內部連結相對密集、對外連結相對稀疏的節點；社群偵測就是從網路的連結樣式找出這些群。</p>
+    <ul>
+      <li>真實網路常有社群結構：朋友網路（家人、同學、實驗室、遊戲朋友）、引用網路（論文多半引用相關領域，例如機器學習和生物）。</li>
+      <li>不是所有網路都有明顯的社群結構；社群可能重疊，或存在於不同尺度。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th></th><th>分群</th><th>社群偵測</th></tr>
+      <tr><td>輸入</td><td>用特徵向量表示的物件</td><td>節點與邊</td></tr>
+      <tr><td>主要依據</td><td>屬性之間的相似度</td><td>連結的樣式</td></tr>
+      <tr><td>目標</td><td>把特徵相似的物件分在一起</td><td>找出內部連結比對外連結密集的群</td></tr>
+      <tr><td>學生例子</td><td>依 GPA 與讀書習慣分群</td><td>依友誼或互動樣式分群</td></tr>
+    </table>
+  </div>
+
+  <h3>2.4 成員式社群偵測（第 30～36 頁）</h3>
+  <div class="callout key">
+    <p class="def">clique（團）是兩兩之間都直接相連的節點集合；n 個節點的 clique 有 n(n − 1)/2 條邊，它和外部節點的連結不受限制。成員式方法用 clique 和它的各種放寬版本，對成員加上結構限制。</p>
+    <ul>
+      <li>最大 clique（maximum）：圖中節點最多的 clique。極大 clique（maximal）：不能再加入任何節點的 clique。每個最大 clique 都是極大的，反之不一定。</li>
+      <li>找最大 clique 是 NP-hard；極大 clique 的數量可能是節點數的指數。</li>
+      <li>度剪枝：找大小 k 的 clique 時，反覆刪掉在剩下的圖中度數 &lt; k − 1 的節點。度數 ≥ k − 1 是必要條件，但不是充分條件。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>結構</th><th>定義</th><th>講義例子（下方元件的圖）</th></tr>
+      <tr><td>n-clique</td><td>極大的節點集合，集合內每對節點在<strong>原圖</strong>中的距離 ≤ n（路徑可以經過集合外的節點）</td><td>1-clique {1, 2, 3}；2-clique {1, 2, 3, 4, 5}、{2, 3, 4, 5, 6}</td></tr>
+      <tr><td>n-club</td><td>極大的節點集合，它的<strong>導出子圖</strong>直徑 ≤ n</td><td>2-club {1, 2, 3, 4}、{1, 2, 3, 5}、{2, 3, 4, 5, 6}</td></tr>
+      <tr><td>n-clan</td><td>導出子圖直徑也 ≤ n 的 n-clique</td><td>2-clan {2, 3, 4, 5, 6}；{1, 2, 3, 4, 5} 是 2-clique 但不是 2-clan（集合內 4 到 5 的距離是 3）</td></tr>
+      <tr><td>k-plex</td><td>集合 V 中每個節點在 V 內至少有 |V| − k 個鄰居（每個節點最多和 k − 1 個成員不相連）</td><td>1-plex 就是 clique</td></tr>
+      <tr><td>k-core</td><td>極大的導出子圖，其中每個節點的度數 ≥ k</td><td>—</td></tr>
+    </table>
+  </div>
+  <p>每個 n-clan 同時是 n-clique 和 n-club。n-club 滿足 n-clique 的距離條件，但在 n-clique 的意義下不一定是極大的。</p>
+
+  <div class="widget" id="w-clq">
+    <p class="w-title">n-clique、n-club、n-clan 檢查器</p>
+    <p class="w-desc">講義第 33～35 頁的 6 點圖。點節點加入或移出集合（藍框），或按下面的講義範例；元件會檢查各種定義，包括「極大」（不能再加任何節點）。</p>
+    <div class="controls">
+      <label>n <input type="range" id="cq-n" min="1" max="3" step="1" value="2"><span class="val" data-for="cq-n"></span></label>
+      <label>k-plex 的 k <input type="range" id="cq-k" min="1" max="3" step="1" value="2"><span class="val" data-for="cq-k"></span></label>
+      <label>k-core 的 k <input type="range" id="cq-c" min="1" max="3" step="1" value="2"><span class="val" data-for="cq-c"></span></label>
+    </div>
+    <div class="controls"><span class="muted">講義範例：</span><div class="seg" id="cq-presets"></div><button class="btn" type="button" id="cq-clear">清空</button></div>
+    <div class="row">
+      <div class="col" style="flex:1 1 260px"><div class="canvas-wrap" style="padding:6px"><svg class="graph" id="cq-svg" aria-label="6 點圖"></svg></div></div>
+      <div class="col" style="flex:1 1 280px"><div class="readout" id="cq-out" style="margin-top:0"></div></div>
+    </div>
+  </div>
+
+  <h3>2.5 群體式社群偵測（第 37～42 頁）</h3>
+  <ul>
+    <li>依群體層級的準則評估分法：平衡（各群大小相近）、穩健（移除一些節點或邊後仍連通）、模組化（內密外疏）、密集（內部邊密度高）、階層（多個尺度都有社群）。不同方法強調不同準則，社群不必全部滿足。</li>
+    <li><strong>Kernighan–Lin（KL）</strong>：把 2n 個節點的圖分成兩群各 n 個（平衡），讓群間連結最少；是一種啟發式，靠交換兩群的節點來改善。</li>
+    <li><strong>Girvan–Newman（GN）</strong>：連接不同社群的橋梁邊通常有很高的邊介數。① 算邊介數 → ② 移除介數最高的邊 → ③ 在剩下的圖重算 → ④ 重複，得到分法的階層；再用模組度等準則選一層。</li>
+  </ul>
+  <div class="callout key">
+    <p class="def">模組度（Modularity）Q 衡量一個分法捕捉社群結構的程度：觀察到的群內邊比例，減去在隨機（保留度數的虛無模型）下期望的群內邊比例。</p>
+    <ul>
+      <li>節點 i、j 之間期望的邊數 \(= k_i k_j / 2m\)（k 是度數、m 是邊數）。</li>
+      <li>Q ≈ 0：和虛無模型的期望差不多；Q &gt; 0：群內邊比期望多。比較同一張圖的不同分法時，Q 越高越好。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-mod">
+    <p class="w-title">模組度與 Girvan–Newman</p>
+    <p class="w-desc">講義第 42 頁：一個三角形和一個 K₄ 用一條橋連起來（m = 10）。依講義分法 Q₁ = Q₂ = 0.1775、Q = 0.355。點節點可以換它的社群（三種顏色輪流）；或按「移除介數最高的邊」跑 Girvan–Newman（邊上的數字是邊介數），連通的部分自動當成一個社群。</p>
+    <div class="controls">
+      <label>圖 <select id="md-g"><option value="lec">三角形 + K₄（講義）</option><option value="two">兩個五點群</option></select></label>
+      <button class="btn primary" type="button" id="md-gn">移除介數最高的邊 ▶</button>
+      <button class="btn" type="button" id="md-reset">還原圖</button>
+      <div class="seg"><button class="btn" type="button" id="md-one">全部同一群</button><button class="btn" type="button" id="md-lec">講義分法</button></div>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="graph" id="md-svg" aria-label="模組度"></svg></div>
+    <div class="readout" id="md-out"></div>
+  </div>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 連結預測（Link Prediction，第 44～51 頁）</h3>
+  <div class="callout key">
+    <p class="def">連結預測是給一個觀察到的網路 G = (V, E)，預測哪些沒觀察到的連結其實存在（缺失連結）或未來會形成（未來連結）。</p>
+    <ul>
+      <li>缺失連結：還原隱藏、沒觀察到的友誼。未來連結：未來的共同作者、未來的追蹤關係。相關任務：連結類型預測（合作 vs. 競爭；引用是當背景還是用了方法）。</li>
+      <li>為什麼會形成連結：同質性原則（Homophily，興趣或研究主題相似的人會連在一起）、三元閉包（Triadic closure，有共同朋友的人可能變成朋友）。這兩個樣式就是相似度式連結預測的動機。</li>
+      <li>局部相似度式：用每個節點的鄰域替每對沒有相連的節點打分數、排序。兩類：鄰域重疊（共同鄰居、Jaccard）與度數式（偏好連結）。</li>
+      <li>學習式：把共同鄰居、Jaccard、Adamic–Adar、度數乘積當成節點對的特徵；正樣本是觀察到的邊，負樣本是抽樣的未連結節點對，訓練邏輯斯迴歸、決策樹或神經網路；或用 GNN 把節點編碼成嵌入，再用解碼器替候選連結打分。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-link">
+    <p class="w-title">連結預測的四種分數</p>
+    <p class="w-desc">依講義第 47～50 頁的數字建的圖：x 的鄰居 {a, b, c}、y 的鄰居 {a, b, d, e, f}，共同鄰居 a（度 3）、b（度 5）→ CN = 2、Jaccard = 2/6、AA = 1/log 3 + 1/log 5、PA = 3 × 5 = 15。依序點兩個節點選一對；表格列出所有未相連的節點對依目前分數的排名（虛線是前 3 名）。</p>
+    <div class="controls">
+      <label>排名依據 <select id="lk-m"><option value="cn">共同鄰居</option><option value="jac">Jaccard</option><option value="aa">Adamic–Adar</option><option value="pa">偏好連結</option></select></label>
+    </div>
+    <div class="row">
+      <div class="col" style="flex:1 1 300px"><div class="canvas-wrap" style="padding:6px"><svg class="graph" id="lk-svg" aria-label="連結預測圖"></svg></div></div>
+      <div class="col" style="flex:1 1 240px"><div class="table-wrap" id="lk-table" style="margin:0;max-height:300px;overflow-y:auto"></div></div>
+    </div>
+    <div class="readout" id="lk-out"></div>
+  </div>
+
+  <h3>3.2 資訊擴散（Information Diffusion，第 53～59 頁）</h3>
+  <div class="callout key">
+    <p class="def">資訊擴散研究想法、行為或疾病怎麼透過網路傳開：哪些節點會被啟動、傳得多快、最後的串聯（cascade）有多大。應用：病毒式行銷與產品採用、謠言與新聞傳播、流行病模擬。</p>
+    <ul>
+      <li>漸進式擴散模型：每個節點是啟動或未啟動；一開始種子集合是啟動的；啟動的節點可能影響未啟動的鄰居；一旦啟動就一直保持啟動。</li>
+      <li>時間 \(t_1\) 時 v 啟動、u 未啟動；若啟動成功，u 在 \(t_2 &gt; t_1\) 變成啟動。成不成功由擴散規則決定。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th></th><th>線性門檻模型（LTM）</th><th>獨立串聯模型（ICM）</th></tr>
+      <tr><td>啟動規則</td><td>已啟動鄰居的影響力總和達到門檻</td><td>一次獨立的啟動嘗試成功</td></tr>
+      <tr><td>邊的意義</td><td>影響力權重 \(w_{v,u}\)</td><td>啟動機率 \(p_{v,w}\)</td></tr>
+      <tr><td>直覺</td><td>同儕影響力的累加</td><td>一次一次的個別嘗試</td></tr>
+      <tr><td>跨回合</td><td>每回合用目前所有已啟動的鄰居重新評估</td><td>每條有向邊只有一次嘗試機會</td></tr>
+    </table>
+  </div>
+  <ul>
+    <li>LTM：每個節點的門檻 \(\theta_v\) 在擴散開始前從 Uniform[0, 1] 獨立抽一次、之後固定；已啟動的節點保持啟動；第 t + 1 步才啟動的節點，下一回合才開始貢獻影響力。</li>
+    <li>ICM：節點 v 在時間 t 啟動，就在 t + 1 對每個未啟動的出鄰居 w 嘗試一次（抽亂數 r &lt; \(p_{vw}\) 就成功）；不管成不成功，之後都不能再對 w 嘗試；各邊的嘗試互相獨立；沒有新節點啟動時停止。</li>
+    <li><strong>影響力最大化</strong>：給預算 k，找 k 個節點的種子集合 S 讓 σ(S)（串聯結束時期望的啟動節點數）最大；LTM／ICM 定義擴散的動態，影響力最大化是在那個模型下最佳化種子選擇。</li>
+  </ul>
+
+  <div class="widget" id="w-diff">
+    <p class="w-title">LTM 與 ICM 的擴散過程</p>
+    <p class="w-desc">點節點設定種子（綠色）。LTM：邊權重 = 1/度數（每個節點收到的權重總和是 1），節點下方的數字是門檻 θ；ICM：每條邊的成功機率都是 p。按「下一步」一回合一回合地擴散（黃色是這回合新啟動的）；「估計 σ(S)」用 1000 次模擬算期望的最終啟動數。<span class="tag add">補充</span>這張圖是自己設的。</p>
+    <div class="controls">
+      <label>模型 <select id="df-m"><option value="ltm">LTM</option><option value="icm">ICM</option></select></label>
+      <label id="df-p-l">ICM 的 p <input type="range" id="df-p" min="0.05" max="1" step="0.05" value="0.3"><span class="val" data-for="df-p"></span></label>
+      <button class="btn primary" type="button" id="df-step">下一步 ▶</button>
+      <button class="btn" type="button" id="df-reset">重來（同樣的種子）</button>
+      <button class="btn" type="button" id="df-new">重新抽門檻／亂數</button>
+      <button class="btn" type="button" id="df-sigma">估計 σ(S)</button>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="graph" id="df-svg" aria-label="擴散"></svg></div>
+    <div class="readout" id="df-out"></div>
+  </div>
+
+  <h3>3.3 傳染病模型（第 62～67 頁）</h3>
+  <div class="callout key">
+    <p class="def">傳染病模型把人分成 S（易感，Susceptible）、I（感染，Infected，可以傳染別人）、R（康復／移除，Recovered/Removed）；和漸進式啟動模型不同，有些模型允許康復或再次易感。</p>
+    <ul>
+      <li>SI：感染後一直是感染，沒有康復（S → I）。</li>
+      <li>SIR：康復或移除後不會再易感（S → I → R）。</li>
+      <li>SIS：康復後沒有持久的免疫力（S → I → S）。</li>
+      <li>SIRS：免疫力是暫時的，之後又會變回易感（S → I → R → S）。</li>
+      <li>SI 模型假設封閉、均勻混合、沒有康復的族群：N = S(t) + I(t) 固定；β 是傳染係數（易感者和感染者接觸時傳染成功的機率）。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-sir">
+    <p class="w-title">SI／SIR／SIS 曲線</p>
+    <p class="w-desc">講義第 65 頁：S = 90、I = 10、β = 0.01 → βSI = 9，也就是此刻每單位時間有 9 人被感染。調 β 與 γ 看曲線形狀；SIR 的感染人數會先升後降，SIS 會停在一個平衡值。</p>
+    <div class="controls">
+      <label>模型 <select id="sr-m"><option value="si">SI</option><option value="sir" selected>SIR</option><option value="sis">SIS</option></select></label>
+      <label>β <input type="range" id="sr-b" min="0.001" max="0.02" step="0.001" value="0.01"><span class="val" data-for="sr-b"></span></label>
+      <label id="sr-g-l">γ <input type="range" id="sr-g" min="0.02" max="0.6" step="0.02" value="0.2"><span class="val" data-for="sr-g"></span></label>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot" id="sr-svg" aria-label="SIR 曲線"></svg></div>
+    <div class="legend"><span><i style="border-color:var(--c-b);background:var(--c-b)"></i>S 易感</span><span><i style="border-color:var(--c-a);background:var(--c-a)"></i>I 感染</span><span><i style="border-color:var(--pos);background:var(--pos)"></i>R 康復</span></div>
+    <div class="readout" id="sr-out"></div>
+  </div>
+  <div class="callout warn">
+    <p><span class="tag chk">待確認</span>講義文字只擷取到第 67 頁 SIR 模型的 γ 定義（「每個感染者以 γ 的速率離開感染狀態」）與 \(dS/dt = -\beta SI\) 的開頭，之後的 SIR 方程式、SIS、SIRS 的細節沒擷取到。上面元件與下方公式中 SIR 的 \(dR/dt\)、SIS、SIRS 是 <span class="tag add">補充</span>依標準模型整理，請對照原始投影片。</p>
+  </div>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 中心性（第 15～23 頁）</h3>
+  $$C_D(v) = \deg(v), \qquad C_D^{norm}(v) = \frac{\deg(v)}{n - 1}$$
+  $$C_B(v) = \sum_{s \ne v \ne t} \frac{\sigma_{st}(v)}{\sigma_{st}}$$
+  <p>\(\sigma_{st}\)：s 到 t 的最短路徑數；\(\sigma_{st}(v)\)：其中經過 v 的條數。</p>
+  $$C_C(v) = \frac{1}{\sum_{u \ne v} d(v, u)}, \qquad C_C^{norm}(v) = \frac{n - 1}{\sum_{u \ne v} d(v, u)}$$
+  $$x_i = \frac{1}{\lambda}\sum_j A_{ij}\, x_j \quad \Leftrightarrow \quad Ax = \lambda x$$
+  <p>A 是鄰接矩陣，λ 是 A 最大的特徵值。</p>
+  <h3>4.2 模組度（第 40～41 頁）</h3>
+  $$Modularity = \sum_{s \in S}\left[\#\text{edges in } s - \text{expected }\#\text{edges in } s\right], \qquad E(i, j) = \frac{k_i k_j}{2m}$$
+  $$Q = \frac{1}{2m}\sum_{ij}\left(A_{ij} - \frac{k_i k_j}{2m}\right)\delta_{ij}$$
+  <h3>4.3 連結預測（第 47～50 頁）</h3>
+  $$CN(x, y) = |N(x) \cap N(y)|, \qquad Jaccard(x, y) = \frac{|N(x) \cap N(y)|}{|N(x) \cup N(y)|}$$
+  $$AA(x, y) = \sum_{z \in N(x) \cap N(y)} \frac{1}{\log |N(z)|}, \qquad PA(x, y) = |N(x)| \cdot |N(y)|$$
+  <h3>4.4 擴散（第 55、57 頁）</h3>
+  $$\text{LTM：} \sum_{u \in N^{in}(v) \cap A_t} w_{v,u} \ge \theta_v, \qquad \text{ICM：成功 若 } r &lt; p_{vw}$$
+  <h3>4.5 傳染病模型（第 65～67 頁）</h3>
+  $$\text{SI：}\ \frac{dS}{dt} = -\beta SI, \qquad \frac{dI}{dt} = \beta SI$$
+  $$\text{SIR：}\ \frac{dS}{dt} = -\beta SI, \qquad \frac{dI}{dt} = \beta SI - \gamma I, \qquad \frac{dR}{dt} = \gamma I \quad \text{(後兩式為補充)}$$
+  $$\text{SIS（補充）：}\ \frac{dS}{dt} = -\beta SI + \gamma I, \qquad \frac{dI}{dt} = \beta SI - \gamma I$$
+
+  <h2 id="examples">5. 範例演算</h2>
+  <div class="steps">
+    <p class="steps-title">例一：介數中心性（第 17 頁）</p>
+    <ol>
+      <li>路徑 A–B–C–D–E，每對節點只有一條最短路徑</li>
+      <li>C 在 (A, D)、(A, E)、(B, D)、(B, E) 這 4 對的路徑上 → \(C_B(C) = 4\)</li>
+      <li>B 在 (A, C)、(A, D)、(A, E) 這 3 對上 → 3；D 同理 3</li>
+      <li>A、E 是端點，不在任何其他節點對的路徑中間 → 0
+        <span class="why">A–E 的度都是 1、B–D 的度都是 2：度中心性分不出 B、C、D，介數可以。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：接近中心性（第 20 頁）</p>
+    <ol>
+      <li>圖：A–B–C–D–E，再加上 C–F（n = 6）</li>
+      <li>C 到其他點的距離：A 2、B 1、D 1、E 2、F 1，總和 7 → 正規化 5/7 ≈ 0.714</li>
+      <li>A：B 1、C 2、D 3、E 4、F 3 → 13 → 5/13 ≈ 0.385；F：C 1、B 2、D 2、A 3、E 3 → 11 → 5/11</li>
+      <li>B、D 各是 9 → 5/9
+        <span class="why">C 在正中間，到每個人都很近；F 雖然只有一個鄰居，但掛在中心 C 上，接近度比端點 A、E 高。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例三：特徵向量中心性怎麼穩定（第 22 頁）</p>
+    <ol>
+      <li>三點路徑 A–B–C，一開始每人 1 分</li>
+      <li>每回合：保留自己的分數再加上鄰居的分數，所有節點同時更新，再用同一個倍數縮放</li>
+      <li>收斂後比例是 A : B : C = 0.7071 : 1 : 0.7071，鄰居分數和 = 1、1.4142、1</li>
+      <li>B 的鄰居分數和 1.4142 = λ × 1，A 的 1 = λ × 0.7071 → λ = 1.4142 = \(\sqrt{2}\)
+        <span class="why">分數的相對比例在「用鄰居分數總和重新打分」之後不變，這就是 \(Ax = \lambda x\)。<span class="tag add">補充</span>「保留自己的分數」是對 A + I 做冪次迭代，特徵向量和 A 一樣，但可以避免在二部圖上來回震盪。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例四：模組度（第 42 頁）</p>
+    <ol>
+      <li>m = 10，2m = 20。社群 1：3 條內部邊（\(\sum A_{ij}\) = 6），度數總和 7；社群 2：6 條內部邊（12），度數總和 13</li>
+      <li>\(Q_1 = \frac{1}{20}\left(6 - \frac{7 \times 7}{20}\right) = \frac{6 - 2.45}{20} = 0.1775\)</li>
+      <li>\(Q_2 = \frac{1}{20}\left(12 - \frac{13 \times 13}{20}\right) = \frac{12 - 8.45}{20} = 0.1775\)</li>
+      <li>Q = 0.1775 + 0.1775 = 0.355 &gt; 0
+        <span class="why">群內邊比虛無模型的期望多，是個不錯的分法。<span class="tag add">補充</span>講義沒畫出圖的文字，這組數字剛好對應「三角形 + K₄ + 一條橋」，模組度元件就用這張圖。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例五：SI 模型（第 65 頁）</p>
+    <ol>
+      <li>S = 90、I = 10、β = 0.01</li>
+      <li>\(\beta SI = 0.01 \times 90 \times 10 = 9\)
+        <span class="why">此刻每單位時間有 9 個新感染者；S 變少、I 變多之後，速率也會跟著變。</span></li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>度 vs. 特徵向量</td><td>度：每個鄰居一樣算</td><td>特徵向量：重要的鄰居算比較多</td><td>朋友多 vs. 朋友是誰</td></tr>
+      <tr><td>介數 vs. 接近</td><td>介數：在別人的最短路徑上（橋）</td><td>接近：自己到別人的距離短</td><td>經過我 vs. 從我出發</td></tr>
+      <tr><td>最大 vs. 極大 clique</td><td>最大：全圖最大的 clique</td><td>極大：不能再擴大的 clique</td><td>最大 ⊂ 極大</td></tr>
+      <tr><td>n-clique vs. n-club</td><td>n-clique：距離在原圖量</td><td>n-club：距離在導出子圖量</td><td>路徑能不能經過外面的點</td></tr>
+      <tr><td>k-plex vs. k-core</td><td>k-plex：每點至少 |V| − k 個鄰居（相對大小）</td><td>k-core：每點度數至少 k（絕對數字）</td><td>k 的意思不一樣</td></tr>
+      <tr><td>分群 vs. 社群偵測</td><td>分群：屬性相似度</td><td>社群偵測：連結樣式</td><td>輸入是特徵向量還是圖</td></tr>
+      <tr><td>KL vs. GN</td><td>KL：平衡二分、交換節點</td><td>GN：反覆刪介數最高的邊</td><td>GN 得到階層</td></tr>
+      <tr><td>CN vs. Jaccard</td><td>CN：共同鄰居數</td><td>Jaccard：除以鄰居聯集，正規化</td><td>度數大的節點 CN 容易偏高</td></tr>
+      <tr><td>AA vs. PA</td><td>AA：冷門的共同鄰居權重大</td><td>PA：度數相乘，不需要共同鄰居</td><td>PA 偏好兩端度數都高的</td></tr>
+      <tr><td>LTM vs. ICM</td><td>LTM：影響力累加到門檻</td><td>ICM：每條邊一次機會、機率 p</td><td>LTM 每回合重新評估</td></tr>
+      <tr><td>SIR vs. SIS</td><td>SIR：康復後免疫</td><td>SIS：康復後又易感</td><td>SIRS：暫時免疫</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="B">
+    <p class="q">1. 某節點只有 2 個鄰居，卻是連接兩個大社群的唯一通道。它哪個中心性最高？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 度中心性</button><button data-opt="B">(B) 介數中心性</button>
+      <button data-opt="C">(C) 特徵向量中心性</button><button data-opt="D">(D) 都一樣低</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。兩個社群之間的所有最短路徑都要經過它，所以介數很高；度只有 2。中心性計算器選「兩群加一座橋」可以看到。</div>
+  </div>
+  <div class="quiz" data-answer="C">
+    <p class="q">2. 模組度 Q &gt; 0 代表什麼？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 社群數大於 1</button><button data-opt="B">(B) 每個社群都是 clique</button>
+      <button data-opt="C">(C) 群內邊比虛無模型下的期望多</button><button data-opt="D">(D) 圖是連通的</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。Q 是觀察到的群內邊比例減去期望比例；全部放同一群時 Q = 0。</div>
+  </div>
+  <div class="quiz" data-answer="D">
+    <p class="q">3. 哪一個連結預測分數「不需要兩個節點有共同鄰居」也可能很高？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 共同鄰居</button><button data-opt="B">(B) Jaccard</button>
+      <button data-opt="C">(C) Adamic–Adar</button><button data-opt="D">(D) 偏好連結</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。PA = |N(x)| × |N(y)|，只看兩端的度數。其他三個沒有共同鄰居時都是 0。</div>
+  </div>
+  <div class="quiz" data-answer="A">
+    <p class="q">4. 在 ICM 中，節點 v 嘗試啟動鄰居 w 失敗後會怎樣？</p>
+    <div class="opts">
+      <button data-opt="A">(A) v 之後不能再嘗試啟動 w</button><button data-opt="B">(B) v 下一回合再試一次</button>
+      <button data-opt="C">(C) w 的門檻降低</button><button data-opt="D">(D) v 變回未啟動</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。ICM 每條邊只有一次嘗試機會。w 仍可能被其他新啟動的鄰居啟動。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 為什麼 Girvan–Newman 刪的是「介數最高」的邊，而不是隨便一條邊？</p>
+    <details class="answer"><summary>看解答</summary><div>社群之間的邊很少，所以兩個社群之間的最短路徑都得擠過這幾條橋，橋的邊介數特別高；社群內部的邊有很多替代路徑，介數低。反覆刪最高的邊，就會先把社群之間的橋切斷。刪完要重算，因為剩下的最短路徑會改走別條橋。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. Adamic–Adar 為什麼要給度數小的共同鄰居比較大的權重？</p>
+    <details class="answer"><summary>看解答</summary><div>如果共同鄰居是名人（度數很大），兩個人都認識他並不稀奇，也不代表兩人有交集；如果共同鄰居是只有少數朋友的人，兩人同時認識他就是比較強的證據。所以權重用 1/log(度數)：冷門的共同鄰居提供更強的證據。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 在講義的 6 點圖中，為什麼 {1, 2, 3, 4, 5} 是 2-clique 卻不是 2-clan？</p>
+    <details class="answer"><summary>看解答</summary><div>在原圖中，4 和 5 可以走 4–6–5，距離是 2，所以集合內每對的距離都 ≤ 2，是 2-clique。但只看集合內部（導出子圖，沒有 6），4 到 5 要走 4–2–3–5，距離 3 &gt; 2，直徑超過 2，所以不是 2-clan。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <div class="quiz">
+    <p class="q">1. 星形圖：中心 C 連到 A、B、D、E（n = 5）。算 C 和 A 的正規化度中心性、介數與正規化接近中心性。</p>
+    <details class="answer"><summary>看解答</summary><div>C：度 4/4 = 1；介數 = 葉子之間的 \(\binom{4}{2}\) = 6 對都經過 C → 6；接近 = 4/(1 × 4) = 1。A：度 1/4 = 0.25；介數 0；到 C 1、到其他 3 個葉子各 2 → 總和 7 → 4/7 ≈ 0.571。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. x 的鄰居 {a, b, c, d}、y 的鄰居 {c, d, e}，且 deg(c) = 2、deg(d) = 4。算 CN、Jaccard、AA（自然對數）、PA。</p>
+    <details class="answer"><summary>看解答</summary><div>交集 {c, d} → CN = 2；聯集 {a, b, c, d, e} → Jaccard = 2/5 = 0.4；AA = 1/ln 2 + 1/ln 4 = 1.443 + 0.721 = 2.164；PA = 4 × 3 = 12。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. SI 模型 N = 100、β = 0.005。I = 20 和 I = 50 時，新感染的速率各是多少？</p>
+    <details class="answer"><summary>看解答</summary><div>I = 20：S = 80 → 0.005 × 80 × 20 = 8。I = 50：S = 50 → 0.005 × 50 × 50 = 12.5。S × I 在兩者各半時最大，所以感染速度在一半人被感染時最快，之後易感的人變少就慢下來（S 形曲線）。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 公司預算只夠送 5 位網紅新產品，想讓口碑擴散最廣。只挑追蹤數最高的 5 人有什麼問題？該怎麼選？</p>
+    <details class="answer"><summary>看解答</summary><div>追蹤數是度中心性，但高度數的人可能都在同一個圈子、粉絲高度重疊，擴散範圍重複。這是影響力最大化問題：在選定的擴散模型（LTM 或 ICM）下，選 5 個種子讓期望啟動數 σ(S) 最大。<span class="tag add">補充</span>常用貪婪法：每次加入「能讓 σ(S) 增加最多」的節點（用模擬估計 σ），自然會挑到不同社群、彼此互補的人；介數高的「連結者」也很有價值。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>社群網路 G = (V, E)：節點是行動者、邊是關係；有向／無向、加權／不加權。四大任務：中心性、社群偵測、連結預測、資訊擴散。</li>
+    <li>度 = 鄰居數（正規化 ÷ (n − 1)）；介數 = 經過我的最短路徑比例總和；接近 = (n − 1)/Σ 距離；特徵向量 Ax = λx。</li>
+    <li>講義：路徑介數 0, 3, 4, 3, 0；接近 5/13、5/9、5/7…；三點路徑特徵向量 0.7071、1、0.7071、λ = √2。</li>
+    <li>社群偵測 = 以連結樣式分群。成員式：clique（NP-hard）、n-clique（原圖距離）、n-club（子圖直徑）、n-clan（兩者都滿足）、k-plex、k-core。</li>
+    <li>群體式：KL（平衡二分、交換）、GN（反覆刪邊介數最高的邊）、模組度最大化。</li>
+    <li>\(Q = \frac{1}{2m}\sum(A_{ij} - \frac{k_ik_j}{2m})\delta_{ij}\)；講義 0.1775 + 0.1775 = 0.355。</li>
+    <li>連結形成：同質性、三元閉包。CN、Jaccard（÷ 聯集）、AA（Σ 1/log deg）、PA（deg × deg）；學習式用這些當特徵或用 GNN。</li>
+    <li>LTM：鄰居權重和 ≥ θ（θ 抽一次固定）；ICM：每條邊一次機會、機率 p。漸進式：啟動後不會變回。</li>
+    <li>影響力最大化：預算 k，選 S 讓 σ(S) 最大。</li>
+    <li>SI（無康復）、SIR（康復免疫）、SIS（不免疫）、SIRS（暫時免疫）；SI：dI/dt = βSI，講義例 0.01 × 90 × 10 = 9。</li>
+  </ol>
+
+  <footer>講義：DM_social_network.pdf</footer>
+</main>
+</div>
+</body>
+</html>

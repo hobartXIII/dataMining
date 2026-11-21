@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W9 k-NN、線性分類器與集成方法</title>
+  <meta name="description" content="資料探勘 W9：惰性學習（k-NN、案例式推理）、線性迴歸、邏輯斯迴歸、SVM 與核函數、集成方法（Bagging、Boosting、AdaBoost、隨機森林）">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/highlighter.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/highlighter.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="w9.js"></script>
+</head>
+<body data-chapter="w9">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">W9 · 講義：DM_week9（2026/11/06）· 分類（二）</p>
+  <h1>🧭 k-NN、線性分類器與集成方法</h1>
+
+  <div class="callout key">
+    <p class="def">這週介紹三類分類器：惰性學習（k-NN、案例式推理）先存資料、等到要預測才算；線性分類器（邏輯斯迴歸、SVM）學一條 \(f(x) = w^T x + b = 0\) 的決策邊界；集成方法把很多個基礎分類器的預測合起來。</p>
+    <ul>
+      <li>k-NN：找最近的 k 筆訓練資料投票；k 小 → 高變異、過度配適，k 大 → 高偏差、過度平滑。距離要先標準化。</li>
+      <li>邏輯斯迴歸：線性分數 \(z = w^T x + b\) 經過 sigmoid 變成機率 \(P(Y=1|x)\)，用最大概似估計訓練。</li>
+      <li>SVM：在所有能分開兩類的超平面中，選邊界（margin）\(2/\lVert w \rVert\) 最大的；用核函數處理非線性。</li>
+      <li>集成：25 個錯誤率 0.35、彼此獨立的分類器多數決，錯誤率降到 0.06。Bagging 用自助抽樣、Boosting 依序加重錯分樣本的權重。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>上週回顧：分類是從有標籤的資料學出屬性和類別的關係；方法有決策樹（資訊增益、增益比、Gini）和單純貝氏分類器（Naïve Bayes，假設各屬性條件獨立）。</li>
+    <li>積極學習（Eager learning）先建模型再等新資料；惰性學習（Lazy learning）只存訓練資料，新資料來了才找相似的樣本來預測：訓練快、預測慢、要存很多資料。</li>
+    <li>k-NN 用距離找鄰居、多數決（分類）或平均（迴歸）；案例式推理（CBR）用 4R 循環：找相似案例、改用它的解法、修正、保存。</li>
+    <li>線性分類器看資料落在超平面哪一側。邏輯斯迴歸輸出機率；SVM 最大化邊界，軟邊界用 C 控制違規的懲罰，核技巧在高維空間算內積卻不用真的轉換。</li>
+    <li>集成方法要有效，基礎分類器要「比亂猜好」而且「錯得不一樣」。Bagging 平行訓練、降變異；Boosting 依序訓練、專攻前一輪錯的樣本。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 積極學習 vs. 惰性學習（第 5～6 頁）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th></th><th>積極學習（Eager）</th><th>惰性學習（Lazy, instance-based）</th></tr>
+      <tr><td>做法</td><td>收到新資料之前就先從訓練資料建好模型</td><td>只存訓練資料（幾乎不前處理），等查詢資料來才泛化</td></tr>
+      <tr><td>例子</td><td>決策樹、單純貝氏</td><td>k-NN、案例式推理（CBR）</td></tr>
+      <tr><td>訓練時間</td><td>多</td><td>少</td></tr>
+      <tr><td>預測時間</td><td>少</td><td>多（每次都要找相似樣本）</td></tr>
+      <tr><td>儲存空間</td><td>只存模型</td><td>要存全部訓練資料</td></tr>
+    </table>
+  </div>
+
+  <h3>2.2 k 最近鄰（k-Nearest Neighbors，第 7～14 頁）</h3>
+  <div class="callout key">
+    <p class="def">k-NN 把每筆資料當成 d 維特徵空間中的一個點，新資料的類別由離它最近的 k 筆訓練資料多數決決定。</p>
+    <ul>
+      <li>預測流程：算距離 → 選最近的 k 筆 → 投票（分類）或取平均（迴歸）。</li>
+      <li>距離常用歐氏距離；名目屬性用簡單比對：值相同距離 0，不同距離 1。</li>
+      <li>特徵縮放很重要：數值範圍大的特徵會主導距離。用訓練集的 \(\mu_j, \sigma_j\) 做標準化，再拿同一組參數轉換驗證、測試與新資料。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-knn">
+    <p class="w-title">k-NN 分類與決策邊界</p>
+    <p class="w-desc">點畫面任一處移動查詢點（黃色）；粗框是被選中的 k 個鄰居。打開「決策區域」看整個平面會被預測成哪一類：k = 1 的邊界彎彎曲曲（過度配適），k 調大邊界變平滑。切到「年齡 × 年收入」資料，比較有沒有標準化。</p>
+    <div class="controls">
+      <label>資料 <select id="knn-data"><option value="blob">兩群（特徵範圍相近）</option><option value="scale">年齡 × 年收入（範圍差很多）</option></select></label>
+      <label>k <input type="range" id="knn-k" min="1" max="15" step="1" value="3"><span class="val" data-for="knn-k"></span></label>
+      <label>距離 <select id="knn-dist"><option value="l2">歐氏（L2）</option><option value="l1">曼哈頓（L1）</option></select></label>
+    </div>
+    <div class="controls">
+      <label><input type="checkbox" id="knn-z"> 標準化（z-score）</label>
+      <label><input type="checkbox" id="knn-region" checked> 決策區域</label>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot click" id="knn-svg" aria-label="k-NN 散布圖"></svg></div>
+    <div class="legend"><span><i style="border-color:var(--c-a);background:var(--c-a)"></i>類別 A</span><span><i style="border-color:var(--c-b);background:var(--c-b)"></i>類別 B</span><span><i style="border-color:var(--text);background:var(--hl-strong)"></i>查詢點</span></div>
+    <div class="readout" id="knn-out"></div>
+  </div>
+
+  <h3>2.3 偏差與變異的取捨（第 12～14 頁）</h3>
+  <div class="callout key">
+    <p class="def">決策邊界是特徵空間中不同預測類別區域之間的分界；k 太小會過度配適（高變異、低偏差），k 太大會過度平滑（高偏差、低變異）。</p>
+    <ul>
+      <li>偏差（Bias）：模型假設太死造成的系統性誤差；決策邊界太簡單，容易配適不足（underfit）。</li>
+      <li>變異（Variance）：模型對訓練集的敏感程度；訓練資料一變，邊界就大幅改變，容易過度配適（overfit）。</li>
+      <li>決策樹的邊界是和座標軸平行的直線段（每次分割都是對單一屬性設門檻）。</li>
+    </ul>
+  </div>
+
+  <h3>2.4 案例式推理（Case-Based Reasoning，第 15～18 頁）</h3>
+  <div class="callout key">
+    <p class="def">案例式推理把過去的案例（問題描述、解法、結果）存成案例庫，遇到新問題時找最相似的案例，改寫它的解法來用。</p>
+    <ol>
+      <li><strong>Retrieve 擷取</strong>：找出和新案例最相似的過去案例。</li>
+      <li><strong>Reuse 重用</strong>：把找到的解法改寫成適合新案例的版本。</li>
+      <li><strong>Revise 修正</strong>：評估提出的解法，必要時修正。</li>
+      <li><strong>Retain 保存</strong>：把這次的新經驗存起來，以後可以用。</li>
+    </ol>
+  </div>
+  <ul>
+    <li>藍莓鬆餅例子：Fred 想做藍莓鬆餅 → 擷取「原味鬆餅」案例 → 重用食譜、加入藍莓 → 藍莓加進奶油會把奶油染藍，所以修正做法 → 把改良後的藍莓鬆餅食譜存成新案例。</li>
+    <li>關鍵挑戰：定義有意義的相似度，以及合適的改寫（adaptation）策略。</li>
+    <li>和 k-NN 的差別：k-NN 只在鄰居之間投票；CBR 可能會<strong>改寫</strong>擷取到的解法。</li>
+  </ul>
+
+  <h3>2.5 線性分類器（第 20 頁）</h3>
+  <div class="callout key">
+    <p class="def">線性分類器把輸入特徵用線性函數 \(f(x) = w^T x + b\) 組合起來，看資料落在決策邊界 \(f(x) = 0\) 的哪一側決定類別。</p>
+    <ul>
+      <li>\(\hat{y} = 1\) 若 \(f(x) \ge 0\)，否則 \(\hat{y} = -1\)。</li>
+      <li>決策邊界在 2D 是一條直線，在更高維度是超平面（hyperplane）。</li>
+    </ul>
+  </div>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 線性迴歸複習（第 22～25 頁）</h3>
+  <ul>
+    <li>線性迴歸從 d 個輸入屬性預測一個連續值：\(\hat{y}_i = w^T x_i + b = \sum_{j=1}^{d} w_j x_{i,j} + b\)。例：用居住面積預測房價。</li>
+    <li>\(w_j\) 代表屬性 \(x_{i,j}\) 對預測的重要程度；w 和 b 都是從資料學到的模型參數。</li>
+    <li>目標是讓平方誤差總和 \(L(w, b) = \sum_i (y_i - \hat{y}_i)^2\) 最小。解法：封閉解 \(\theta = (X^T X)^{-1} X^T y\)，或梯度下降 \(\theta \leftarrow \theta - \alpha \nabla_\theta L(\theta)\)。</li>
+  </ul>
+
+  <div class="widget" id="w-linreg">
+    <p class="w-title">單一特徵的最小平方法</p>
+    <p class="w-desc">講義第 25 頁（選讀）：屬性 1, 3, 5, 7、輸出 4, 10, 14, 16 → \(\bar{y} = 11\)、w = 2、b = 3。修改數字看直線和殘差怎麼變（用逗號分隔，兩列數量要一樣）。</p>
+    <div class="controls">
+      <label>x <input type="text" id="lr-x" value="1, 3, 5, 7" style="width:12em"></label>
+      <label>y <input type="text" id="lr-y" value="4, 10, 14, 16" style="width:12em"></label>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot" id="lr-svg" aria-label="迴歸直線"></svg></div>
+    <div class="readout" id="lr-out"></div>
+  </div>
+
+  <h3>3.2 邏輯斯迴歸（Logistic Regression，第 27～28 頁）</h3>
+  <div class="callout key">
+    <p class="def">邏輯斯迴歸先算線性分數 \(z = w^T x + b\)，再用 sigmoid 函數 \(\sigma(z) = 1/(1 + e^{-z})\) 把它變成屬於類別 1 的機率；機率 ≥ 0.5 預測為正類。</p>
+    <ul>
+      <li>名稱叫「迴歸」，但做的是分類：它迴歸的是機率（更精確地說是對數勝算 log-odds）。</li>
+      <li>訓練用最大概似估計（Maximum Likelihood Estimation）：找讓觀察到的訓練資料出現機率最大的參數，對數概似用梯度上升（gradient ascent）最大化。</li>
+      <li>\(z = 0\) ⇔ \(\sigma(z) = 0.5\)：決策邊界仍然是 \(w^T x + b = 0\)，所以是線性分類器。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-logit">
+    <p class="w-title">Sigmoid 函數</p>
+    <p class="w-desc">拖動 z，看機率怎麼變：z = 0 時剛好 0.5；|z| 越大越接近 0 或 1，但永遠不會等於。</p>
+    <div class="controls">
+      <label>z <input type="range" id="lg-z" min="-8" max="8" step="0.1" value="1.5"><span class="val" data-for="lg-z"></span></label>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot" id="lg-svg" aria-label="sigmoid 曲線"></svg></div>
+    <div class="readout" id="lg-out"></div>
+  </div>
+
+  <h3>3.3 支援向量機（Support Vector Machine，第 30～41 頁）</h3>
+  <div class="callout key">
+    <p class="def">SVM 是判別式模型：在所有能把兩類分開的超平面中，找邊界（margin）最大的那一個；最靠近決策邊界的資料點叫支援向量（support vectors）。</p>
+    <ul>
+      <li>能分開訓練資料的超平面有無限多個（講義的 B1、B2），B1 的邊界比較大，所以比較好。</li>
+      <li>兩條邊界線：\(w^T x + b = +1\) 與 \(w^T x + b = -1\)；邊界寬度 \(= 2/\lVert w \rVert\)。</li>
+      <li>硬邊界（hard-margin）條件：\(y_i(w^T x_i + b) \ge 1\)，所有訓練資料都不能落在邊界內。</li>
+      <li>最大化 \(2/\lVert w \rVert\) 等於最小化 \(\lVert w \rVert^2 / 2\)：這是有限制條件的最佳化問題，用拉格朗日乘數（Lagrange multipliers）和 KKT 條件求解。</li>
+      <li>解出來 \(w = \sum_i \lambda_i y_i x_i\)：只有支援向量的 \(\lambda_i &gt; 0\)，其他點拿掉也不影響邊界。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>決策分數 f(x) 的範圍</th><th>位置</th><th>預測</th></tr>
+      <tr><td>\(f(x) \ge +1\)</td><td>正類那側，在邊界上或邊界外</td><td>+1</td></tr>
+      <tr><td>\(0 \le f(x) &lt; +1\)</td><td>正類那側，在邊界內</td><td>+1</td></tr>
+      <tr><td>\(-1 &lt; f(x) &lt; 0\)</td><td>負類那側，在邊界內</td><td>−1</td></tr>
+      <tr><td>\(f(x) \le -1\)</td><td>負類那側，在邊界上或邊界外</td><td>−1</td></tr>
+    </table>
+  </div>
+  <p>硬邊界 SVM 不允許訓練資料落在邊界內，但新的資料仍可能落在那裡，這時看它在 \(f(x) = 0\) 的哪一側分類。</p>
+
+  <h3>3.4 軟邊界 SVM（Soft-margin，第 41 頁）</h3>
+  <div class="callout key">
+    <p class="def">軟邊界 SVM 允許部分資料違反邊界（鬆弛變數 \(\xi_i\)），目標函數是 \(\lVert w \rVert^2/2 + C\sum_i \xi_i\)；C 控制「邊界大」和「違規少」之間的取捨。</p>
+    <ul>
+      <li>C 大：違規的懲罰重 → 邊界窄、盡量不錯分（接近硬邊界，容易過度配適）。</li>
+      <li>C 小：允許更多違規，換一個比較寬的邊界。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-svm">
+    <p class="w-title">線性 SVM 與參數 C</p>
+    <p class="w-desc">實線是決策邊界 f(x) = 0，虛線是 f(x) = ±1；粗框的點是支援向量或違反邊界的點（\(y_i f(x_i) \le 1\)）。點畫面可以加入新資料點（選加哪一類），加一個「跑到對面」的點，再調 C 看邊界怎麼反應。<span class="tag add">補充</span>這裡用簡化版 SMO（Sequential Minimal Optimization）解對偶問題，就是 LIBSVM 用的方法的簡化版。</p>
+    <div class="controls">
+      <label>log₁₀ C <input type="range" id="svm-c" min="-2" max="2" step="0.25" value="0"><span class="val" data-for="svm-c"></span></label>
+      <span class="muted">點擊加入：</span>
+      <div class="seg" id="svm-cls"><button class="btn" type="button" data-c="1" aria-pressed="true">+1（藍）</button><button class="btn" type="button" data-c="-1" aria-pressed="false">−1（紅）</button></div>
+      <button class="btn" type="button" id="svm-reset">重設資料</button>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot click" id="svm-svg" aria-label="SVM"></svg></div>
+    <div class="readout" id="svm-out"></div>
+  </div>
+
+  <h3>3.5 非線性 SVM 與核技巧（第 42～49 頁）</h3>
+  <div class="callout key">
+    <p class="def">核技巧（kernel trick）用核函數 \(K(x, z) = \phi(x)^T \phi(z)\) 直接算出高維特徵空間中的內積，不必真的把資料轉換到那個空間。</p>
+    <ul>
+      <li>原空間線性不可分的資料，經過非線性映射 \(\phi(x)\) 到更高維空間後可能變成線性可分。例：\(\phi(x_1, x_2, x_3) = (x_1, x_2, x_3, x_1^2, x_1x_2, x_1x_3)\)。</li>
+      <li>限制條件變成 \(y_i(w^T \phi(x_i) + b) \ge 1\)。若 \(\phi\) 的維度非常高（甚至無限），明確算出 \(\phi(x)\) 很貴或不可能。</li>
+      <li>預測只需要內積：\(f(z) = \sum_i \lambda_i y_i \phi(x_i)^T \phi(z) + b = \sum_i \lambda_i y_i K(x_i, z) + b\)。</li>
+      <li>常用核函數：線性 \(x^T z\)、多項式 \((x^T z + c)^d\)、RBF（高斯）\(\exp(-\lVert x - z \rVert^2 / 2\sigma^2)\)，即 \(\gamma = 1/2\sigma^2\)。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-kernel">
+    <p class="w-title">二次多項式核：兩種算法結果一樣</p>
+    <p class="w-desc">講義第 47 頁：\(\phi(x) = (x_1^2, \sqrt{2}x_1x_2, x_2^2)\)。左邊先轉到 3 維再做內積，右邊直接在 2 維算 \((x^T z)^2\)。下面順便算 RBF 核。</p>
+    <div class="controls">
+      <label>x₁ <input type="number" id="kn-x1" value="1" step="0.5"></label>
+      <label>x₂ <input type="number" id="kn-x2" value="2" step="0.5"></label>
+      <label>z₁ <input type="number" id="kn-z1" value="3" step="0.5"></label>
+      <label>z₂ <input type="number" id="kn-z2" value="1" step="0.5"></label>
+      <label>RBF γ <input type="number" id="kn-g" value="0.5" step="0.1" min="0"></label>
+    </div>
+    <div class="readout" id="kn-out"></div>
+  </div>
+
+  <h3>3.6 多類別 SVM（第 49 頁）</h3>
+  <p>SVM 本身是二元分類器。<span class="tag chk">待確認</span>講義第 49 頁的內容是圖片，文字沒擷取到。<span class="tag add">補充</span>常見做法有兩種：一對多（one-vs-rest）訓練 K 個分類器，取分數最高的；一對一（one-vs-one）訓練 K(K−1)/2 個分類器再投票。LIBSVM 預設用一對一。</p>
+
+  <h3>3.7 集成分類器（Ensemble，第 51～54 頁）</h3>
+  <div class="callout key">
+    <p class="def">集成方法從訓練資料建出一組基礎分類器，再把它們的預測合起來得到最後結果：「三個臭皮匠，勝過一個諸葛亮」。</p>
+    <ul>
+      <li>三步驟：① 建立多份資料集 \(D_1, \dots, D_t\) → ② 各自訓練分類器 \(C_1, \dots, C_t\) → ③ 合併成 \(C^*\)。</li>
+      <li>合併方式：硬投票（預測標籤多數決）、軟投票（平均類別機率）、加權投票（可靠的分類器權重大）。</li>
+      <li>有效的條件：① 基礎分類器夠多樣（錯誤不要高度相關）；② 簡單多數決時，每個分類器要比亂猜好（二元分類錯誤率 &lt; 0.5）。</li>
+      <li>實務上很難做到完全獨立，降低錯誤的相關性通常就夠了。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-ens">
+    <p class="w-title">多數決的錯誤率</p>
+    <p class="w-desc">講義第 54 頁：25 個分類器、各自錯誤率 ε = 0.35、彼此獨立 → 超過一半（≥ 13 個）同時錯的機率只有 0.06。把 ε 調到 0.5 以上看看：集成反而比單一分類器更差。</p>
+    <div class="controls">
+      <label>分類器數 n <input type="range" id="en-n" min="1" max="51" step="2" value="25"><span class="val" data-for="en-n"></span></label>
+      <label>單一錯誤率 ε <input type="range" id="en-e" min="0.05" max="0.95" step="0.01" value="0.35"><span class="val" data-for="en-e"></span></label>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot" id="en-svg" aria-label="錯誤數的二項分布"></svg></div>
+    <div class="readout" id="en-out"></div>
+  </div>
+
+  <h3>3.8 Bagging（Bootstrap Aggregating，第 55～59 頁）</h3>
+  <div class="callout key">
+    <p class="def">Bagging 用自助抽樣（bootstrap）從訓練集「取後放回」抽出 k 份和原資料一樣大的樣本，各訓練一個分類器，再多數決。</p>
+    <ul>
+      <li>每份 bootstrap 樣本大小 = n（和原訓練集一樣）。</li>
+      <li>每筆原始資料在一輪中被抽到的機率是 \(1 - (1 - 1/n)^n\)，n 夠大時趨近 \(1 - e^{-1} \approx 0.632\)。</li>
+      <li>沒被抽到的約 36.8% 叫袋外（out-of-bag）資料。<span class="tag add">補充</span>可以拿來當驗證集估計錯誤率。</li>
+      <li>講義的例子用決策樹樁（decision stump，深度 1 的決策樹）當基礎分類器，選資訊增益最大的分割點 k。</li>
+    </ul>
+  </div>
+
+  <h3>3.9 Boosting 與 AdaBoost（第 60～61 頁）</h3>
+  <div class="callout key">
+    <p class="def">Boosting 依序訓練基礎分類器：每輪結束後提高被錯分樣本的權重、降低分對樣本的相對權重，讓下一個分類器專攻前面處理不好的樣本。</p>
+    <ul>
+      <li>一開始每筆權重相同：\(w_i^{(1)} = 1/n\)。</li>
+      <li>權重高 → 下一輪被抽到的機率高 → 得到更多關注。例：第 2 輪把第 4 筆分錯，第 3 輪它的權重提高，可能被抽到好幾次。</li>
+    </ul>
+  </div>
+  <div class="callout warn">
+    <p><span class="tag chk">待確認</span>講義文字只擷取到第 61 頁（Boosting 的抽樣例子），之後的 AdaBoost 與隨機森林沒擷取到。以下 AdaBoost 與隨機森林的內容是 <span class="tag add">補充</span>依教科書（Han／Tan）整理，請對照原始投影片。</p>
+  </div>
+  <ul>
+    <li><span class="tag add">補充</span>AdaBoost 每輪：算加權錯誤率 \(\varepsilon_t\) → 分類器權重 \(\alpha_t = \frac{1}{2}\ln\frac{1 - \varepsilon_t}{\varepsilon_t}\)（錯越少、話語權越大）→ 更新樣本權重 \(w_i \leftarrow w_i \cdot e^{-\alpha_t y_i h_t(x_i)}\) 再正規化（錯分的乘 \(e^{\alpha_t}\)、分對的乘 \(e^{-\alpha_t}\)）。</li>
+    <li><span class="tag add">補充</span>最後預測：\(H(x) = \text{sign}\left(\sum_t \alpha_t h_t(x)\right)\)。若某輪 \(\varepsilon_t &gt; 0.5\)，通常重設權重重來。</li>
+    <li><span class="tag add">補充</span>隨機森林（Random Forest）= Bagging + 決策樹 + 每個節點只從隨機挑的 m 個屬性中選分割（常用 \(m \approx \sqrt{d}\)），讓樹之間更不相關。</li>
+  </ul>
+
+  <div class="widget" id="w-boost">
+    <p class="w-title">Bagging 與 AdaBoost：決策樹樁</p>
+    <p class="w-desc">講義第 57～59 頁的一維資料：x = 0.1～1.0，標籤 + + + − − − − + + +。單一樹樁最多只能分對 7 筆。按「下一輪」逐輪加入樹樁，看合併後的預測。長條高度是 AdaBoost 的樣本權重（Bagging 則是這輪被抽到的次數）。<span class="tag add">補充</span>Bagging 的抽樣用固定亂數種子；AdaBoost 這裡用加權錯誤率直接訓練樹樁（不重抽樣）。</p>
+    <div class="controls">
+      <label>方法 <select id="bs-mode"><option value="ada">AdaBoost</option><option value="bag">Bagging</option></select></label>
+      <button class="btn primary" type="button" id="bs-next">下一輪 ▶</button>
+      <button class="btn" type="button" id="bs-all">跑 10 輪</button>
+      <button class="btn" type="button" id="bs-reset">重來</button>
+      <span class="muted" id="bs-count"></span>
+    </div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot" id="bs-svg" aria-label="樹樁與權重"></svg></div>
+    <div class="table-wrap" id="bs-table"></div>
+    <div class="readout" id="bs-out"></div>
+  </div>
+
+  <div class="widget" id="w-boot">
+    <p class="w-title">自助抽樣的 63.2%</p>
+    <p class="w-desc">從 n 筆資料取後放回抽 n 次，數字是每筆被抽到的次數，灰色是袋外資料。多抽幾次，看被抽到的比例在 63.2% 附近跳動。</p>
+    <div class="controls">
+      <label>n <input type="range" id="bt-n" min="5" max="60" step="1" value="20"><span class="val" data-for="bt-n"></span></label>
+      <button class="btn primary" type="button" id="bt-draw">再抽一次</button>
+    </div>
+    <div id="bt-cells" class="chips"></div>
+    <div class="readout" id="bt-out"></div>
+  </div>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 距離與標準化（第 9～10 頁）</h3>
+  $$dist(X_1, X_2) = \sqrt{\sum_{j=1}^{d} (x_{1j} - x_{2j})^2}, \qquad z_j = \frac{x_j - \mu_j}{\sigma_j}$$
+  <h3>4.2 線性迴歸（第 24～25 頁）</h3>
+  $$L(w, b) = \sum_{i=1}^{n} \left(y_i - (w^T x_i + b)\right)^2, \qquad \theta = (X^T X)^{-1} X^T y$$
+  $$w = \frac{\sum_i x_i (y_i - \bar{y})}{\sum_i x_i^2 - \frac{1}{n}\left(\sum_i x_i\right)^2}, \qquad b = \frac{1}{n}\sum_i (y_i - w x_i)$$
+  <h3>4.3 邏輯斯迴歸（第 27～28 頁）</h3>
+  $$P(Y = 1 \mid x) = \sigma(w^T x + b) = \frac{1}{1 + e^{-(w^T x + b)}}$$
+  $$L(w, b) = \prod_i p_i^{y_i} (1 - p_i)^{1 - y_i}$$
+  <h3>4.4 SVM（第 37～41 頁）</h3>
+  $$\text{margin} = \frac{2}{\lVert w \rVert}, \qquad \min_{w, b} \frac{\lVert w \rVert^2}{2} \ \text{ s.t. } y_i(w^T x_i + b) \ge 1$$
+  $$\text{軟邊界：} \min_{w, b, \xi} \frac{\lVert w \rVert^2}{2} + C \sum_i \xi_i$$
+  $$L(w, b, \lambda) = \frac{1}{2}\lVert w \rVert^2 - \sum_i \lambda_i \left[y_i(w^T x_i + b) - 1\right], \qquad \frac{\partial L}{\partial w} = 0 \Rightarrow w = \sum_i \lambda_i y_i x_i$$
+  <h3>4.5 核函數（第 46～48 頁）</h3>
+  $$K(x, z) = \phi(x)^T \phi(z), \qquad f(z) = \sum_i \lambda_i y_i K(x_i, z) + b$$
+  $$K_{poly}(x, z) = (x^T z + c)^d, \qquad K_{RBF}(x, z) = \exp\left(-\frac{\lVert x - z \rVert^2}{2\sigma^2}\right)$$
+  <h3>4.6 集成錯誤率與 bootstrap（第 54～55 頁）</h3>
+  $$e_{ensemble} = \sum_{i=13}^{25} \binom{25}{i} \varepsilon^i (1 - \varepsilon)^{25 - i} = 0.06 \quad (\varepsilon = 0.35)$$
+  $$P(\text{被抽到}) = 1 - \left(1 - \frac{1}{n}\right)^n \to 1 - e^{-1} \approx 0.632$$
+  <h3>4.7 AdaBoost <span class="tag add">補充</span></h3>
+  $$\alpha_t = \frac{1}{2}\ln\frac{1 - \varepsilon_t}{\varepsilon_t}, \qquad w_i^{(t+1)} = \frac{w_i^{(t)} e^{-\alpha_t y_i h_t(x_i)}}{Z_t}, \qquad H(x) = \text{sign}\left(\sum_t \alpha_t h_t(x)\right)$$
+
+  <h2 id="examples">5. 範例演算</h2>
+  <div class="steps">
+    <p class="steps-title">例一：單一特徵的線性迴歸（第 25 頁）</p>
+    <ol>
+      <li>資料：x = 1, 3, 5, 7；y = 4, 10, 14, 16 → \(\bar{y} = (4 + 10 + 14 + 16)/4 = 11\)</li>
+      <li>分子：\(1(4 - 11) + 3(10 - 11) + 5(14 - 11) + 7(16 - 11) = -7 - 3 + 15 + 35 = 40\)</li>
+      <li>分母：\(1^2 + 3^2 + 5^2 + 7^2 - \frac{1}{4}(1 + 3 + 5 + 7)^2 = 84 - 64 = 20\) → w = 40 / 20 = 2</li>
+      <li>\(b = \frac{1}{4}[(4 - 2) + (10 - 6) + (14 - 10) + (16 - 14)] = \frac{12}{4} = 3\)
+        <span class="why">迴歸線 ŷ = 2x + 3。上面的元件可以驗算。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：二次多項式核（第 47 頁）</p>
+    <ol>
+      <li>\(\phi(x) = (x_1^2, \sqrt{2}x_1x_2, x_2^2)\)，\(\phi(z) = (z_1^2, \sqrt{2}z_1z_2, z_2^2)\)</li>
+      <li>\(\phi(x)^T\phi(z) = x_1^2z_1^2 + 2x_1x_2z_1z_2 + x_2^2z_2^2\)</li>
+      <li>\(= (x_1z_1 + x_2z_2)^2 = (x^T z)^2\)
+        <span class="why">所以 \(K(x, z) = (x^T z)^2\)：在 2 維算一次內積再平方，就等於 3 維空間的內積。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例三：集成的錯誤率（第 54 頁）</p>
+    <ol>
+      <li>25 個分類器、每個錯誤率 0.35</li>
+      <li>如果 25 個預測完全一樣：集成錯誤率 = 0.35，沒有任何改善</li>
+      <li>如果彼此獨立：多數決錯 ⇔ 至少 13 個同時錯 → \(\sum_{i=13}^{25}\binom{25}{i}0.35^i 0.65^{25-i} = 0.06\)
+        <span class="why"><span class="tag add">補充</span>精確值 0.0604。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例四：SVM 的數值例子（第 39 頁）</p>
+    <ol>
+      <li>拉格朗日解出 \(w = \sum_i \lambda_i y_i x_i\)，兩個支援向量的 \(\lambda\) 都是 65.5261</li>
+      <li>\(w_1 = 65.5261 \times 1 \times 0.3858 + 65.5261 \times (-1) \times 0.4871 = -6.6377\)；\(w_2 = 65.5261 \times 0.4687 - 65.5261 \times 0.6110 = -9.3243\)</li>
+      <li>\(b_1 = 1 - w^T x_1 = 7.9311\)，\(b_2 = -1 - w^T x_2 = 7.9303\)，平均 b = 7.9307</li>
+      <li>決策邊界：\(-6.6377x_1 - 9.3243x_2 + 7.9307 = 0\)
+        <span class="why"><span class="tag chk">待確認</span>這頁的文字擷取有點亂（資料表是圖片），支援向量座標 (0.3858, 0.4687)、(0.4871, 0.6110) 是從算式反推的。<span class="tag add">補充</span>驗算：x₁ 代入 f = 0.9995、x₂ 代入 f = −0.9998，四捨五入誤差內符合支援向量落在 f = ±1 上。</span></li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>積極 vs. 惰性學習</td><td>積極：先建模型，預測快</td><td>惰性：存資料，預測時才算</td><td>計算花在訓練還是預測</td></tr>
+      <tr><td>k-NN vs. CBR</td><td>k-NN：鄰居投票</td><td>CBR：擷取案例並改寫解法</td><td>有沒有「改寫」</td></tr>
+      <tr><td>k 小 vs. k 大</td><td>k 小：高變異、過度配適</td><td>k 大：高偏差、過度平滑</td><td>k = 1 時訓練錯誤率為 0</td></tr>
+      <tr><td>線性迴歸 vs. 邏輯斯迴歸</td><td>線性：預測連續值</td><td>邏輯斯：預測機率 → 分類</td><td>輸出有沒有經過 sigmoid</td></tr>
+      <tr><td>硬邊界 vs. 軟邊界</td><td>硬：訓練資料不能進入邊界</td><td>軟：允許違規，用 C 懲罰</td><td>資料是否線性可分</td></tr>
+      <tr><td>C 大 vs. C 小</td><td>C 大：邊界窄、違規少</td><td>C 小：邊界寬、違規多</td><td>C 是違規的「罰金」</td></tr>
+      <tr><td>φ(x) vs. K(x, z)</td><td>φ：把資料映射到高維</td><td>K：直接算映射後的內積</td><td>核技巧不用算 φ</td></tr>
+      <tr><td>Bagging vs. Boosting</td><td>Bagging：平行、各輪獨立抽樣</td><td>Boosting：依序、依權重抽樣</td><td>Bagging 降變異，Boosting 也降偏差</td></tr>
+      <tr><td>硬投票 vs. 軟投票</td><td>硬：預測標籤多數決</td><td>軟：平均類別機率</td><td>合併的是標籤還是機率</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="B">
+    <p class="q">1. 用 k-NN 分類時，資料有「年齡（0～100）」和「年收入（0～2,000,000）」兩個特徵，沒有標準化會怎樣？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 年齡主導距離</button><button data-opt="B">(B) 年收入主導距離</button>
+      <button data-opt="C">(C) 兩者影響一樣</button><button data-opt="D">(D) k-NN 不受影響</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。年收入的差距動輒上萬，年齡最多差 100，平方相加後幾乎只剩年收入。要用訓練集的平均與標準差做 z-score。</div>
+  </div>
+  <div class="quiz" data-answer="D">
+    <p class="q">2. 軟邊界 SVM 中，把 C 調得很大，最可能的結果是？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 邊界變寬、允許更多違規</button><button data-opt="B">(B) 變成非線性分類器</button>
+      <button data-opt="C">(C) 支援向量變多</button><button data-opt="D">(D) 邊界變窄、盡量不讓訓練資料違規</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。C 是違規的懲罰權重；C 越大越像硬邊界，邊界窄、容易過度配適。</div>
+  </div>
+  <div class="quiz" data-answer="A">
+    <p class="q">3. 多數決集成要比單一分類器好，下列哪個條件是必要的？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 每個基礎分類器的錯誤率低於 0.5，且錯誤不要高度相關</button><button data-opt="B">(B) 基礎分類器都用同一份訓練資料</button>
+      <button data-opt="C">(C) 基礎分類器的數量是偶數</button><button data-opt="D">(D) 基礎分類器都必須是決策樹</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。講義第 53 頁的兩個條件。錯誤率 &gt; 0.5 時，多數決會讓錯誤率變得更高（可在集成元件把 ε 調到 0.6 試試）。</div>
+  </div>
+  <div class="quiz" data-answer="C">
+    <p class="q">4. 邏輯斯迴歸的決策分數 z = 0 時，預測的機率是？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 0</button><button data-opt="B">(B) 1</button>
+      <button data-opt="C">(C) 0.5</button><button data-opt="D">(D) e</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。\(\sigma(0) = 1/(1 + e^0) = 1/2\)，剛好落在決策邊界上。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 為什麼標準化的 μ 和 σ 只能用訓練集算？</p>
+    <details class="answer"><summary>看解答</summary><div>用到驗證或測試資料的統計量，等於讓模型「偷看」了評估資料，評估結果會過度樂觀（資料洩漏）。正確做法是在訓練集上算 μ、σ，再用同一組數字轉換驗證、測試和未來的新資料。W10 的 LIBSVM 也一樣：svm-scale 用 -s 存訓練集的縮放參數，再用 -r 套到測試集。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 為什麼說 SVM 的解只由支援向量決定？</p>
+    <details class="answer"><summary>看解答</summary><div>\(w = \sum_i \lambda_i y_i x_i\)，依 KKT 條件，只有剛好落在邊界上（或違反邊界）的點 \(\lambda_i &gt; 0\)，其他點的 \(\lambda_i = 0\)。所以把非支援向量拿掉重新訓練，邊界不會變。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. Bagging 和 Boosting 都產生很多分類器，兩者訓練方式最大的差別是什麼？</p>
+    <details class="answer"><summary>看解答</summary><div>Bagging 每輪獨立地均勻取後放回抽樣，分類器可以平行訓練，主要降低變異；Boosting 依序訓練，每輪依前一輪的結果調整樣本權重（錯的變重），下一個分類器專攻難的樣本，合併時通常也依準確度加權。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <div class="quiz">
+    <p class="q">1. 訓練集的身高平均 170、標準差 8。一筆測試資料身高 186，標準化後是多少？</p>
+    <details class="answer"><summary>看解答</summary><div>z = (186 − 170) / 8 = 2。用的是訓練集的 μ、σ，不是測試集的。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. x = (1, 2)、z = (3, 1)，算二次多項式核 \(K(x, z) = (x^T z)^2\)，並用 \(\phi\) 驗算。</p>
+    <details class="answer"><summary>看解答</summary><div>\(x^T z = 3 + 2 = 5\) → K = 25。\(\phi(x) = (1, 2\sqrt{2}, 4)\)、\(\phi(z) = (9, 3\sqrt{2}, 1)\) → 9 + 12 + 4 = 25。上面的核函數元件預設就是這組數字。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 有 5 個獨立分類器、每個錯誤率 0.3，多數決的錯誤率是多少？</p>
+    <details class="answer"><summary>看解答</summary><div>至少 3 個錯：\(\binom{5}{3}0.3^3 0.7^2 + \binom{5}{4}0.3^4 0.7 + 0.3^5 = 0.1323 + 0.02835 + 0.00243 = 0.163\)，比單一的 0.3 低。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">4. <span class="tag add">補充</span>AdaBoost 某輪的加權錯誤率 ε = 0.2，這個分類器的權重 α 是多少？錯分樣本的權重（正規化前）乘上多少？</p>
+    <details class="answer"><summary>看解答</summary><div>\(\alpha = \frac{1}{2}\ln\frac{0.8}{0.2} = \frac{1}{2}\ln 4 = 0.693\)。錯分的乘 \(e^{0.693} = 2\)、分對的乘 \(e^{-0.693} = 0.5\)，之後再除以總和正規化。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 某電商要在使用者每次點擊時即時（10 毫秒內）推薦商品類別，訓練資料有上億筆。k-NN 和邏輯斯迴歸你會選哪個？為什麼？</p>
+    <details class="answer"><summary>看解答</summary><div>選邏輯斯迴歸（或其他積極學習方法）。k-NN 是惰性學習，每次預測都要和上億筆資料算距離、還要存全部資料，即時延遲做不到；邏輯斯迴歸預測只要一次內積加 sigmoid。若一定要用 k-NN，需要近似最近鄰索引等加速方法。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>積極學習先建模型；惰性學習（k-NN、CBR）存資料、預測時才算：訓練快、預測慢、吃空間。</li>
+    <li>k-NN：算距離 → 取 k 個最近 → 投票／平均。名目屬性相同 0、不同 1。先用訓練集的 μ、σ 標準化。</li>
+    <li>k 小 = 高變異、過度配適；k 大 = 高偏差、過度平滑。</li>
+    <li>CBR 4R：Retrieve → Reuse → Revise → Retain；會改寫解法，不只投票。</li>
+    <li>線性分類器：\(f(x) = w^T x + b\)，看正負號；邊界在 2D 是直線、高維是超平面。</li>
+    <li>線性迴歸最小化平方誤差；講義例 ŷ = 2x + 3。</li>
+    <li>邏輯斯迴歸：\(p = \sigma(w^T x + b)\)，p ≥ 0.5 → 正類；最大概似估計、梯度上升。</li>
+    <li>SVM：最大化邊界 \(2/\lVert w \rVert\) ⇔ 最小化 \(\lVert w \rVert^2/2\)，限制 \(y_i(w^Tx_i + b) \ge 1\)；支援向量決定一切。</li>
+    <li>軟邊界加 \(C\sum\xi_i\)：C 大窄邊界、C 小寬邊界。核技巧 \(K(x,z) = \phi(x)^T\phi(z)\)：線性、多項式、RBF。</li>
+    <li>集成：基礎分類器錯誤率 &lt; 0.5 且多樣；25 個 0.35 → 0.06。Bagging 取後放回（63.2%），Boosting 加重錯分樣本。</li>
+  </ol>
+
+  <footer>講義：DM_week9.pdf（2026/11/06）</footer>
+</main>
+</div>
+</body>
+</html>

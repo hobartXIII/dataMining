@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W10 分類的實務議題與 LIBSVM</title>
+  <meta name="description" content="資料探勘 W10：特徵選取與特徵工程、過度配適、混淆矩陣、精確率與召回率、F1、ROC 與 AUC、保留法與交叉驗證、類別不平衡、LIBSVM 使用流程">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/highlighter.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/highlighter.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="w10.js"></script>
+</head>
+<body data-chapter="w10">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">W10 · 講義：DM_week10、DM_week10_libsvm（2026/11/13）· 作業 2（LibSVM）11/27 截止</p>
+  <h1>📏 分類的實務議題與 LIBSVM</h1>
+
+  <div class="callout key">
+    <p class="def">這週處理「模型做出來之後」的問題：該用哪些特徵、怎麼判斷有沒有過度配適、用什麼指標評估、怎麼切資料選模型、類別不平衡怎麼辦；最後用 LIBSVM 實際跑一次 SVM。</p>
+    <ul>
+      <li>特徵選取三類：過濾法（不訓練分類器，例：Fisher score）、包裝法（用驗證表現搜尋子集）、嵌入法（訓練時順便選，例：決策樹、LASSO）。</li>
+      <li>選測試（驗證）錯誤最低的模型，不是訓練錯誤最低的。</li>
+      <li>準確率在類別不平衡時會騙人：3% 罹癌，全部猜「沒有」準確率也有 97%。要看精確率、召回率、F1、ROC／AUC。</li>
+      <li>LIBSVM 流程：轉格式 → 縮放 → 用 RBF 核 → 交叉驗證找 C、γ → 用最佳參數訓練整個訓練集 → 測試。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>特徵分三種：相關（relevant）、不相關（irrelevant，例：用學號預測 GPA）、重複（redundant，例：月收入與年收入）。特徵工程是從原始特徵造出更有用的特徵。</li>
+    <li>過度配適：訓練錯誤很低、但對新資料泛化很差；主因是訓練資料太少、模型太複雜。</li>
+    <li>混淆矩陣的 TP、FN、FP、TN 衍生出準確率、精確率、召回率、特異度、F1；ROC 曲線看門檻改變時 TPR 與 FPR 的取捨，AUC 是曲線下面積。</li>
+    <li>估計準確率：保留法（holdout）、k 折交叉驗證、留一法（LOOCV）、分層交叉驗證。驗證資料拿來選模型，測試集只在最後用一次。</li>
+    <li>類別不平衡：資料層（過採樣、欠採樣、SMOTE，只對訓練資料做）與演算法層（移動門檻、類別加權、集成方法）。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 特徵選取與特徵工程（第 4～5 頁）</h3>
+  <div class="callout key">
+    <p class="def">特徵選取是從 p 個原始特徵中挑出一小組對預測有用的子集；特徵工程是用原始特徵造出更有效的新特徵。</p>
+    <ul>
+      <li>特徵工程例子：每日確診數、每日檢驗數、每日住院數 → 每週陽性率。</li>
+      <li>傳統上靠領域知識；現在深度學習能自動從原始資料學出有用的表示（representation）。</li>
+    </ul>
+  </div>
+
+  <h3>2.2 三種特徵選取方法（第 6～9 頁）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>方法</th><th>怎麼做</th><th>例子</th></tr>
+      <tr><td>過濾法（Filter）</td><td>不訓練特定分類器，用某個好壞量度替每個特徵打分數</td><td>Fisher score</td></tr>
+      <tr><td>包裝法（Wrapper）</td><td>用目前的特徵子集訓練分類器、看驗證表現，再更新子集（加入、刪除、交換）</td><td>窮舉 \(2^p - 1\) 種、前向選取、後向刪除</td></tr>
+      <tr><td>嵌入法（Embedded）</td><td>建分類模型的同時選特徵</td><td>決策樹、LASSO（L1 正則化）</td></tr>
+    </table>
+  </div>
+  <ul>
+    <li><strong>Fisher score</strong>：好的特徵在不同類別之間分得很開、同一類別之內很一致；分數越高越好。</li>
+    <li><strong>前向選取</strong>（Forward selection）：從空集合開始，每一步加入讓驗證表現進步最多的特徵。</li>
+    <li><strong>後向刪除</strong>（Backward elimination）：從全部特徵開始，每一步刪掉「刪了之後表現掉最少」的特徵。</li>
+    <li><strong>LASSO</strong>（Least Absolute Shrinkage and Selection Operator）：在平方誤差後面加 \(\lambda\lVert w \rVert_1\)，L1 懲罰會把不重要的特徵權重壓到剛好 0，等於自動刪掉那些特徵。</li>
+  </ul>
+
+  <div class="widget" id="w-fisher">
+    <p class="w-title">Fisher score 計算器</p>
+    <p class="w-desc">輸入某個特徵在兩個類別中的值（逗號分隔）。<span class="tag add">補充</span>預設是自己設的例子：預測「是否及格」時，「讀書時數」兩類分得很開，分數高；切到「學號末兩碼」，兩類混在一起，分數接近 0。</p>
+    <div class="controls"><span class="muted">範例：</span><div class="seg" id="fs-presets"></div></div>
+    <div class="controls">
+      <label>類別 1 <input type="text" id="fs-a" style="width:14em"></label>
+      <label>類別 2 <input type="text" id="fs-b" style="width:14em"></label>
+    </div>
+    <div class="readout" id="fs-out"></div>
+  </div>
+
+  <h3>2.3 過度配適（Model Overfitting，第 11～21 頁）</h3>
+  <div class="callout key">
+    <p class="def">過度配適是模型的訓練錯誤很低、但對沒看過的資料泛化很差：它學到的是訓練集裡的雜訊或偶然樣式，而不是背後真正的關係。</p>
+    <ul>
+      <li>訓練錯誤：在用來擬合模型的資料上量到的錯誤。測試錯誤：在新資料上的期望錯誤，用驗證或測試資料估計。</li>
+      <li>模型越複雜（例：決策樹節點越多），訓練錯誤通常越低；但只看訓練錯誤低，不代表模型比較好。</li>
+      <li>測試錯誤通常先降後升，開始升的地方就是過度配適的起點。要選測試錯誤最低的模型。</li>
+      <li>兩大原因：① 訓練資料太少，分不出一般樣式和抽樣雜訊；② 模型太複雜，彈性大到能配適雜訊、離群值和標錯的資料。</li>
+      <li>複雜度的量法依模型而定：決策樹看深度或葉節點數；線性模型看特徵數（有效自由度）；神經網路看參數數量（相對於資料量與多樣性）。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th></th><th>模型複雜度</th><th>訓練錯誤</th><th>測試錯誤</th></tr>
+      <tr><td>配適不足（Underfitting）</td><td>太簡單</td><td>高</td><td>高</td></tr>
+      <tr><td>剛好（Good fit）</td><td>適中</td><td>低</td><td>低</td></tr>
+      <tr><td>過度配適（Overfitting）</td><td>太複雜</td><td>非常低</td><td>高</td></tr>
+    </table>
+  </div>
+  <p>固定模型複雜度時，訓練資料越多，訓練錯誤和測試錯誤的差距通常越小（講義第 19 頁：訓練資料加倍）。</p>
+
+  <div class="widget" id="w-fit">
+    <p class="w-title">模型複雜度與訓練／測試錯誤</p>
+    <p class="w-desc"><span class="tag add">補充</span>用多項式迴歸示範：真實關係是一條平滑曲線加上雜訊。拉高次數，紅線（訓練錯誤）一路往下，藍線（測試錯誤）先降後升。把訓練點加倍，看高次數時差距是不是變小。</p>
+    <div class="controls">
+      <label>多項式次數 <input type="range" id="fit-d" min="0" max="12" step="1" value="3"><span class="val" data-for="fit-d"></span></label>
+      <label><input type="checkbox" id="fit-more"> 訓練資料加倍（12 → 24 筆）</label>
+    </div>
+    <div class="row">
+      <div class="col" style="flex:1 1 300px"><div class="canvas-wrap" style="padding:6px"><svg class="plot" id="fit-svg" aria-label="資料與擬合曲線"></svg></div></div>
+      <div class="col" style="flex:1 1 260px"><div class="canvas-wrap" style="padding:6px"><svg class="plot" id="fit-err" aria-label="錯誤率與複雜度"></svg></div></div>
+    </div>
+    <div class="legend"><span><i style="border-color:var(--c-a);background:var(--c-a)"></i>訓練資料／訓練錯誤</span><span><i style="border-color:var(--c-b);background:var(--c-b)"></i>測試資料／測試錯誤</span><span><i style="border-color:var(--text);background:var(--text)"></i>擬合曲線</span></div>
+    <div class="readout" id="fit-out"></div>
+  </div>
+
+  <h3>2.4 混淆矩陣（Confusion Matrix，第 25～28 頁）</h3>
+  <div class="callout key">
+    <p class="def">混淆矩陣把每筆資料的「真實類別」和「預測類別」交叉計數；二元分類時，通常把主要關心的類別定為正類（positive）。</p>
+    <ul>
+      <li>TP（真陽性）：正類被正確預測為正。TN（真陰性）：負類被正確預測為負。</li>
+      <li>FP（偽陽性）：負類被錯預測成正。FN（偽陰性）：正類被錯預測成負。</li>
+      <li>記法：第二個字母是「預測」，第一個字母是「預測對不對」。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th></th><th>預測 +</th><th>預測 −</th><th>合計</th></tr>
+      <tr><th>實際 +</th><td>TP</td><td>FN</td><td>P = TP + FN</td></tr>
+      <tr><th>實際 −</th><td>FP</td><td>TN</td><td>N = FP + TN</td></tr>
+      <tr><th>合計</th><td>P′ = TP + FP</td><td>N′ = FN + TN</td><td>P + N（All）</td></tr>
+    </table>
+  </div>
+
+  <h3>2.5 為什麼準確率會騙人（第 29～34 頁）</h3>
+  <div class="callout key">
+    <p class="def">當正類很稀少時，一律預測「負類」也能有很高的準確率，所以準確率高不代表模型抓得到少數類別。</p>
+    <ul>
+      <li>例：只有 3% 的病人罹癌 → 永遠回答「沒有」的分類器準確率 97%，但一個病人都沒抓到。</li>
+      <li>精確率（Precision）：預測為正的當中，真的是正的比例 → 「說有的時候有多準」。</li>
+      <li>召回率（Recall，敏感度、TPR）：真正是正的當中，被抓到的比例 → 「有的時候抓到多少」。</li>
+      <li>F1 是精確率與召回率的調和平均；\(F_\beta\) 的 β &gt; 1 偏重召回率、β &lt; 1 偏重精確率。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-cm">
+    <p class="w-title">混淆矩陣與所有指標</p>
+    <p class="w-desc">講義第 33 頁的練習：TP 90、FN 210、FP 140、TN 9560 → 準確率 96.5%，但召回率只有 30%（10 個病人漏掉 7 個）。也可以切到第 35 頁的分類器 A、B、C 比較。</p>
+    <div class="controls"><span class="muted">範例：</span><div class="seg" id="cm-presets"></div></div>
+    <div class="row">
+      <div class="col">
+        <div class="cm">
+          <span></span><span class="h">預測 +</span><span class="h">預測 −</span>
+          <span class="h">實際 +</span><label class="tp"><input type="number" id="cm-tp" min="0"><small>TP</small></label><label class="fn"><input type="number" id="cm-fn" min="0"><small>FN</small></label>
+          <span class="h">實際 −</span><label class="fp"><input type="number" id="cm-fp" min="0"><small>FP</small></label><label class="tn"><input type="number" id="cm-tn" min="0"><small>TN</small></label>
+        </div>
+        <div class="controls"><label>F<sub>β</sub> 的 β <input type="range" id="cm-beta" min="0.25" max="4" step="0.25" value="1"><span class="val" data-for="cm-beta"></span></label></div>
+      </div>
+      <div class="col" style="flex:1 1 280px"><div class="bars" id="cm-bars"></div></div>
+    </div>
+    <div class="readout" id="cm-out"></div>
+  </div>
+
+  <h3>2.6 ROC 曲線與 AUC（第 36～42 頁）</h3>
+  <div class="callout key">
+    <p class="def">ROC 曲線（Receiver Operating Characteristic）畫出決策門檻改變時，真陽性率 TPR 與偽陽性率 FPR 的取捨；AUC 是曲線下面積，衡量模型把正例排在負例前面的能力。</p>
+    <ul>
+      <li>(FPR, TPR) = (0, 0)：全部預測為負；(1, 1)：全部預測為正；(0, 1)：完美模型。</li>
+      <li>越靠近左上角越好：同樣的 FPR 下 TPR 更高。對角線是亂猜。</li>
+      <li>AUC = 1 是完美排序，AUC = 0.5 等於亂猜。AUC 大代表整體排序好，但實際選哪個模型還要看在意的 FPR 區段。</li>
+      <li>例：M1 在低 FPR 時 TPR 較高、M2 在高 FPR 時較高。詐欺偵測可能只能容忍很低的 FPR；疾病篩檢可以接受多一點偽陽性換取高召回率。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-roc">
+    <p class="w-title">從分數畫出 ROC 曲線</p>
+    <p class="w-desc">依講義第 38～39 頁的步驟：把資料依分數由高到低排好，門檻從最高往下降，每多一筆被預測為正，就多一個 (FPR, TPR) 點。<span class="tag add">補充</span>10 筆分數與標籤取自教科書（Han）的例子。點表格中的列可以改那筆的真實標籤；打開「講義 A～D」看第 37 頁 ROC 空間的四個點。</p>
+    <div class="controls">
+      <label>門檻：前 k 筆預測為正，k = <input type="range" id="roc-k" min="0" max="10" step="1" value="4"><span class="val" data-for="roc-k"></span></label>
+      <label><input type="checkbox" id="roc-abcd"> 講義 A～D</label>
+    </div>
+    <div class="row">
+      <div class="col" style="flex:1 1 280px"><div class="canvas-wrap" style="padding:6px"><svg class="plot" id="roc-svg" aria-label="ROC 曲線"></svg></div></div>
+      <div class="col" style="flex:1 1 260px"><div class="table-wrap" id="roc-table" style="margin:0"></div></div>
+    </div>
+    <div class="readout" id="roc-out"></div>
+  </div>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 模型評估與選擇（第 23～24 頁）</h3>
+  <ul>
+    <li>評估指標：準確率、精確率、召回率、F1、ROC／AUC。</li>
+    <li>模型比較與選擇：在不同分類器、特徵組合、超參數之間挑選，用驗證資料。</li>
+    <li>最後評估：選定的模型只在從未碰過的測試集上評估<strong>一次</strong>。</li>
+  </ul>
+
+  <h3>3.2 保留法與交叉驗證（第 43～47 頁）</h3>
+  <div class="callout key">
+    <p class="def">k 折交叉驗證把訓練資料隨機切成 k 份大小差不多、互不重疊的折（fold），輪流拿 1 折驗證、其餘 k − 1 折訓練，重複 k 次後把指標平均。</p>
+    <ul>
+      <li>保留法（Holdout）：隨機切兩份，例如 2/3 訓練、1/3 測試；可以重複 k 次取平均。</li>
+      <li>常用 k = 5 或 10。</li>
+      <li>留一法（Leave-one-out, LOOCV）：k = n，每折只有 1 筆，通常用在小資料。</li>
+      <li>分層交叉驗證（Stratified）：每折的類別比例都和整個訓練集差不多。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-cv">
+    <p class="w-title">k 折交叉驗證的切法</p>
+    <p class="w-desc">20 筆資料，其中 6 筆是正類（底下紅線）。黃色是那一輪的驗證折、藍色是訓練。沒有分層時，有的折可能完全沒有正類；勾「分層」後每折的正類數量都差不多。</p>
+    <div class="controls">
+      <label>k <input type="range" id="cv-k" min="2" max="20" step="1" value="5"><span class="val" data-for="cv-k"></span></label>
+      <label><input type="checkbox" id="cv-strat"> 分層（stratified）</label>
+      <button class="btn" type="button" id="cv-shuffle">重新洗牌</button>
+    </div>
+    <div class="folds" id="cv-folds"></div>
+    <div class="readout" id="cv-out"></div>
+  </div>
+
+  <h3>3.3 類別不平衡（Class Imbalance，第 48～49 頁）</h3>
+  <div class="callout key">
+    <p class="def">類別不平衡是某一類（通常是我們關心的正類）比其他類稀少很多，例如詐欺偵測、疾病篩檢、網路入侵偵測。處理方法分資料層與演算法層。</p>
+    <ul>
+      <li>資料層（重抽樣，<strong>只對訓練資料做</strong>）：① 隨機過採樣：複製少數類；② 隨機欠採樣：刪掉部分多數類；③ 合成過採樣（SMOTE）：造出新的少數類樣本。</li>
+      <li>演算法層：① 移動門檻：把正類的判斷門檻調低，提高召回率、減少代價高的偽陰性，門檻用驗證資料或交叉驗證選；② 類別加權：錯分少數類的懲罰加大；③ 集成方法：平衡隨機森林、為不平衡設計的 Boosting。</li>
+    </ul>
+  </div>
+
+  <div class="widget" id="w-smote">
+    <p class="w-title">過採樣、欠採樣與 SMOTE</p>
+    <p class="w-desc">藍點是多數類（30 筆）、紅點是少數類（6 筆）。<span class="tag add">補充</span>SMOTE 的做法：隨機挑一個少數類樣本，再從它的 k 個少數類近鄰中挑一個，在兩點連線上隨機取一點當新樣本（虛線是連線）。隨機過採樣只是把原點複製（數字是複製次數）。</p>
+    <div class="controls"><div class="seg" id="sm-mode"></div><button class="btn" type="button" id="sm-again">重新產生</button></div>
+    <div class="canvas-wrap" style="padding:6px"><svg class="plot" id="sm-svg" aria-label="重抽樣"></svg></div>
+    <div class="readout" id="sm-out"></div>
+  </div>
+
+  <h3>3.4 建立與評估分類模型的流程（第 50～51 頁）</h3>
+  <ol>
+    <li>準備資料：處理缺失值與離群值；轉換、建立、選取有用的特徵。</li>
+    <li>選候選模型：訓練多種演算法或設定。</li>
+    <li>用驗證集或交叉驗證調整：選超參數、特徵、決策門檻。</li>
+    <li>用適合任務的指標評估：準確率、精確率、召回率、F 值、ROC、AUC。</li>
+    <li>處理類別不平衡：重抽樣（過採樣、欠採樣、SMOTE）或演算法層方法（類別加權、成本敏感學習、移動門檻）。</li>
+  </ol>
+  <p><span class="tag chk">待確認</span>第 51 頁最後一句只擷取到「A good classifier is not simply the one with the highe…」，應該是「好的分類器不只是準確率最高的那個」，請對照原始投影片。</p>
+
+  <h3>3.5 LIBSVM 使用流程（LIBSVM 講義第 2～13 頁）</h3>
+  <div class="callout key">
+    <p class="def">LIBSVM 是台大林智仁老師團隊開發的命令列工具，做支援向量分類與迴歸；建議流程是：轉格式 → 縮放 → 用 RBF 核 → 交叉驗證找最佳 C 和 γ → 用最佳參數訓練整個訓練集 → 測試。</p>
+    <ul>
+      <li>下載：<code>http://www.csie.ntu.edu.tw/~cjlin/libsvm</code>；流程出自〈A Practical Guide to Support Vector Classification〉。</li>
+      <li>資料格式：每行一筆、以 <code>\n</code> 結尾：<code>&lt;label&gt; &lt;index1&gt;:&lt;value1&gt; &lt;index2&gt;:&lt;value2&gt; …</code>。訓練集的 label 是整數類別（支援多類別）；測試集的 label 只用來算準確率，未知時填任何數字都可以。</li>
+      <li>類別特徵要 one-hot 編碼：LIBSVM 只吃數值。</li>
+      <li>稀疏格式（選讀）：只寫非 0 的欄位，例：[0, 0, 1, 0, 0, 3.5] 正類 → <code>1 3:1 6:3.5</code>。</li>
+    </ul>
+  </div>
+  <pre class="code"># ② 縮放訓練資料到 [0, 1]，並把縮放參數存到 scale.params
+svm-scale.exe -l 0 -u 1 -s scale.params train &gt; train.scale
+
+# 用「同一組」參數縮放測試資料（不能讓測試資料影響前處理規則）
+svm-scale.exe -r scale.params test &gt; test.scale
+
+# ③～⑤ 訓練：-t 2 = RBF 核，-c 是 C，-g 是 γ
+svm-train.exe -t 2 -c 32 -g 0.00125 train.scale model
+
+# ⑥ 預測，結果寫到 output.txt
+svm-predict.exe test.scale model output.txt
+
+# 要輸出類別機率：訓練和預測都要加 -b 1
+svm-train.exe -b 1 -t 2 -c 32 -g 0.00125 train.scale model
+svm-predict.exe -b 1 test.scale model output.txt</pre>
+  <ul>
+    <li><span class="tag chk">待確認</span>講義第 6 頁提醒：Windows 上用 <code>&gt;</code> 重新導向 svm-scale 的輸出，有時會存成非 ASCII 編碼（<span class="tag add">補充</span>PowerShell 5.1 的 <code>&gt;</code> 預設是 UTF-16），svm-train 就讀不進去。<span class="tag add">補充</span>可以改用命令提示字元（cmd）執行，或在 PowerShell 用 <code>| Out-File -Encoding ascii train.scale</code>。</li>
+    <li><span class="tag add">補充</span>交叉驗證找參數：<code>svm-train -v 5 -c C -g γ train.scale</code> 只輸出 5 折交叉驗證的準確率、不存模型。指引建議在 \(C = 2^{-5}, 2^{-3}, \dots, 2^{15}\)、\(\gamma = 2^{-15}, 2^{-13}, \dots, 2^{3}\) 的格點上搜尋（LIBSVM 附的 <code>tools/grid.py</code> 會自動做）。</li>
+  </ul>
+
+  <div class="widget" id="w-libsvm">
+    <p class="w-title">LIBSVM 格式轉換與 svm-scale</p>
+    <p class="w-desc">每列是「標籤, 顏色, 特徵 2, 特徵 3」。顏色做 one-hot（red、blue、green → 第 1～3 欄），數值特徵接在後面。縮放參數（每欄的最小、最大值）只用<strong>訓練資料</strong>算，再套到測試資料：測試資料縮放後可能超出 [0, 1]，這是正常的。</p>
+    <div class="row">
+      <div class="col" style="flex:1 1 260px"><label class="muted">訓練資料<br><textarea id="ls-train" rows="5" style="width:100%;font-family:var(--mono);font-size:.86rem;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px"></textarea></label></div>
+      <div class="col" style="flex:1 1 260px"><label class="muted">測試資料<br><textarea id="ls-test" rows="5" style="width:100%;font-family:var(--mono);font-size:.86rem;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px"></textarea></label></div>
+    </div>
+    <div class="controls">
+      <label><input type="checkbox" id="ls-sparse" checked> 稀疏格式（省略 0）</label>
+      <label><input type="checkbox" id="ls-scale" checked> svm-scale -l 0 -u 1</label>
+    </div>
+    <div class="readout" id="ls-out"></div>
+  </div>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 Fisher score（第 7 頁）</h3>
+  $$F_r = \frac{\sum_{j=1}^{c} n_j (\mu_{j,r} - \mu_r)^2}{\sum_{j=1}^{c} n_j \sigma_{j,r}^2}$$
+  <p>c 是類別數；\(\mu_{j,r}\)、\(\sigma_{j,r}^2\) 是第 j 類在屬性 r 上的平均與變異數；\(n_j\) 是第 j 類的訓練資料筆數；\(\mu_r\) 是屬性 r 的整體平均。</p>
+  <h3>4.2 LASSO（第 9 頁）</h3>
+  $$L(w) = \frac{1}{2}\sum_{i=1}^{n}(y_i - w^T x_i)^2 + \lambda \sum_{j=1}^{p} |w_j|$$
+  <h3>4.3 混淆矩陣指標（第 28～32 頁）</h3>
+  $$Accuracy = \frac{TP + TN}{All}, \qquad Error\ rate = 1 - Accuracy = \frac{FP + FN}{All}$$
+  $$Precision = \frac{TP}{TP + FP}, \qquad Recall = TPR = \frac{TP}{TP + FN}$$
+  $$Specificity = TNR = \frac{TN}{FP + TN}, \qquad FPR = \frac{FP}{FP + TN}, \qquad FNR = \frac{FN}{TP + FN}$$
+  $$F_1 = \frac{2 \times precision \times recall}{precision + recall}, \qquad F_\beta = \frac{(\beta^2 + 1) \times precision \times recall}{\beta^2 \times precision + recall}$$
+  <h3>4.4 ROC 的座標</h3>
+  $$\text{x 軸} = FPR = 1 - specificity, \qquad \text{y 軸} = TPR = recall$$
+
+  <h2 id="examples">5. 範例演算</h2>
+  <div class="steps">
+    <p class="steps-title">例一：癌症篩檢的混淆矩陣（第 33～34 頁）</p>
+    <ol>
+      <li>TP = 90、FN = 210、FP = 140、TN = 9560，共 10000 筆；實際罹癌 P = 300</li>
+      <li>Accuracy = (90 + 9560) / 10000 = 96.50%，Error rate = 3.50%</li>
+      <li>Precision = 90 / (90 + 140) = 90/230 = 39.13%</li>
+      <li>Recall = 90 / (90 + 210) = 90/300 = 30.00%；Specificity = 9560 / (140 + 9560) = 98.56%</li>
+      <li>F1 = 2 × 39.13% × 30.00% / (39.13% + 30.00%) = 33.96%
+        <span class="why">準確率 96.5% 看起來很好，但真正罹癌的 300 人中漏掉 210 人（70%）。癌症篩檢漏診的代價很高，應該優先提高召回率。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：三個分類器的比較（第 35 頁）</p>
+    <ol>
+      <li>A：TP 10、FN 40、FP 10、TN 40 → Precision 0.5、Recall 0.2、FPR 0.2、F = 0.28</li>
+      <li>B：TP 25、FN 25、FP 25、TN 25 → Precision 0.5、Recall 0.5、FPR 0.5、F = 0.5</li>
+      <li>C：TP 40、FN 10、FP 40、TN 10 → Precision 0.5、Recall 0.8、FPR 0.8、F = 0.61
+        <span class="why">三個的精確率都是 0.5、準確率也都是 0.5：只看單一指標分不出來。<span class="tag add">補充</span>A 的 F 精確值是 0.2857、C 是 0.6154，講義是無條件捨去到小數第二位。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例三：ROC 空間的四個點（第 37 頁）</p>
+    <ol>
+      <li>A：TP 63、FN 37、FP 28、TN 72 → TPR 0.63、FPR 0.28（比對角線好）</li>
+      <li>B：TP 77、FN 23、FP 77、TN 23 → TPR 0.77、FPR 0.77（在對角線上＝亂猜）</li>
+      <li>C：TP 24、FN 76、FP 88、TN 12 → TPR 0.24、FPR 0.88（比亂猜還差）</li>
+      <li>D：TP 76、FN 24、FP 12、TN 88 → TPR 0.76、FPR 0.12（最接近左上角，最好）
+        <span class="why"><span class="tag add">補充</span>C 在對角線下方：把它的預測全部反過來，就變成 (0.12, 0.76)，剛好是 D。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例四：one-hot 與 LIBSVM 格式（LIBSVM 講義第 12～13 頁）</p>
+    <ol>
+      <li>Color = {red, blue, green} → red [1, 0, 0]、blue [0, 1, 0]、green [0, 0, 1]</li>
+      <li>紅色、正類 → <code>1 1:1 2:0 3:0</code>；藍色、負類 → <code>0 1:0 2:1 3:0</code>；綠色、正類 → <code>1 1:0 2:0 3:1</code></li>
+      <li>稀疏格式只寫非 0：紅色正類 → <code>1 1:1</code>；[0, 0, 1, 0, 0, 3.5] 正類 → <code>1 3:1 6:3.5</code>
+        <span class="why">one-hot 的維度很高、大部分是 0 時，稀疏格式省很多空間。</span></li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>過濾法 vs. 包裝法</td><td>過濾：不訓練分類器，直接打分</td><td>包裝：每個子集都訓練、看驗證表現</td><td>包裝法準但慢</td></tr>
+      <tr><td>不相關 vs. 重複特徵</td><td>不相關：和類別無關（學號）</td><td>重複：和別的特徵資訊重疊（月薪 vs. 年薪）</td><td>單獨看有沒有用 vs. 有沒有多餘</td></tr>
+      <tr><td>精確率 vs. 召回率</td><td>Precision：分母是「預測為正」</td><td>Recall：分母是「實際為正」</td><td>看分母是 P′ 還是 P</td></tr>
+      <tr><td>召回率 vs. 特異度</td><td>Recall = TP / P（正類抓到多少）</td><td>Specificity = TN / N（負類認對多少）</td><td>FPR = 1 − 特異度</td></tr>
+      <tr><td>FP vs. FN</td><td>FP：其實是負，被說成正（誤報）</td><td>FN：其實是正，被說成負（漏報）</td><td>第二個字母是預測</td></tr>
+      <tr><td>ROC vs. AUC</td><td>ROC：所有門檻下的 (FPR, TPR) 曲線</td><td>AUC：曲線下面積，一個數字</td><td>AUC 0.5 = 亂猜</td></tr>
+      <tr><td>驗證集 vs. 測試集</td><td>驗證：選模型、特徵、門檻</td><td>測試：最後只評估一次</td><td>測試集不能參與任何選擇</td></tr>
+      <tr><td>k 折 vs. 分層 k 折</td><td>k 折：隨機切</td><td>分層：每折類別比例相同</td><td>不平衡資料要分層</td></tr>
+      <tr><td>過採樣 vs. SMOTE</td><td>隨機過採樣：複製原樣本</td><td>SMOTE：在近鄰之間合成新樣本</td><td>複製容易過度配適</td></tr>
+      <tr><td>svm-scale -s vs. -r</td><td>-s：存下訓練資料的縮放參數</td><td>-r：讀取參數套到測試資料</td><td>測試資料不能自己算 min／max</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="C">
+    <p class="q">1. 某詐欺偵測模型 TP = 8、FN = 2、FP = 40、TN = 950，它的精確率是多少？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 80%</button><button data-opt="B">(B) 95.8%</button>
+      <button data-opt="C">(C) 16.7%</button><button data-opt="D">(D) 4.0%</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。Precision = 8 / (8 + 40) = 16.7%。(A) 是召回率 8/10，(B) 是準確率 958/1000。</div>
+  </div>
+  <div class="quiz" data-answer="A">
+    <p class="q">2. 下列哪一種是嵌入式（embedded）特徵選取？</p>
+    <div class="opts">
+      <button data-opt="A">(A) LASSO</button><button data-opt="B">(B) Fisher score</button>
+      <button data-opt="C">(C) 前向選取</button><button data-opt="D">(D) 窮舉所有子集</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。LASSO 在訓練時用 L1 懲罰把權重壓成 0。Fisher score 是過濾法；前向選取和窮舉是包裝法的搜尋策略。</div>
+  </div>
+  <div class="quiz" data-answer="D">
+    <p class="q">3. 一個模型的 ROC 曲線剛好落在對角線上，它的 AUC 大約是？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 0</button><button data-opt="B">(B) 1</button>
+      <button data-opt="C">(C) 0.25</button><button data-opt="D">(D) 0.5</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。對角線代表 TPR = FPR，等於亂猜，下方面積是 0.5。</div>
+  </div>
+  <div class="quiz" data-answer="B">
+    <p class="q">4. 做 SMOTE 時，下列哪個做法是對的？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 先對整份資料做 SMOTE，再切訓練與測試集</button><button data-opt="B">(B) 先切好資料，只對訓練集做 SMOTE</button>
+      <button data-opt="C">(C) 只對測試集做 SMOTE</button><button data-opt="D">(D) 對訓練集與測試集分別做 SMOTE</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。講義第 48 頁：重抽樣只套用在訓練資料。先做再切，合成樣本會和測試資料互相洩漏資訊，測試集也不再反映真實的類別比例。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 為什麼要選「測試（驗證）錯誤最低」而不是「訓練錯誤最低」的模型複雜度？</p>
+    <details class="answer"><summary>看解答</summary><div>模型越複雜，訓練錯誤幾乎一定越低（甚至到 0），因為它能把雜訊也背起來。我們真正在意的是對新資料的表現，只能用沒參與訓練的資料估計；測試錯誤先降後升，最低點就是泛化最好的複雜度。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 疾病篩檢和垃圾郵件過濾，各自應該偏重召回率還是精確率？</p>
+    <details class="answer"><summary>看解答</summary><div>疾病篩檢偏重召回率：漏掉病人（FN）代價高，多幾個偽陽性可以再做進一步檢查。垃圾郵件過濾偏重精確率：把重要信件誤判成垃圾（FP）代價高，漏掉幾封垃圾信影響較小。用 \(F_\beta\) 時前者 β &gt; 1、後者 β &lt; 1。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 為什麼 svm-scale 要先用 -s 存訓練資料的參數，再用 -r 縮放測試資料，而不是兩份各自縮放？</p>
+    <details class="answer"><summary>看解答</summary><div>前處理規則只能從訓練資料學，不能讓測試資料影響（講義：Do not let values from the test set affect the preprocessing rule）。各自縮放時，同一個原始值在訓練集和測試集會被映射成不同的數字，模型學到的邊界就對不上了；也等於偷看了測試資料的分布。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <div class="quiz">
+    <p class="q">1. 承選擇題 1（TP 8、FN 2、FP 40、TN 950），算召回率、特異度、FPR 與 F1。</p>
+    <details class="answer"><summary>看解答</summary><div>Recall = 8/10 = 80%；Specificity = 950/990 = 95.96%；FPR = 40/990 = 4.04%；Precision = 16.67% → F1 = 2 × 0.1667 × 0.8 / (0.1667 + 0.8) = 0.276。可以在混淆矩陣元件輸入驗算。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 精確率 0.6、召回率 0.9，算 F1 和 F2。</p>
+    <details class="answer"><summary>看解答</summary><div>F1 = 2 × 0.6 × 0.9 / 1.5 = 0.72。F2 = (4 + 1) × 0.54 / (4 × 0.6 + 0.9) = 2.7 / 3.3 = 0.818。β = 2 偏重召回率，而召回率較高，所以 F2 &gt; F1。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 訓練資料某特徵最小 20、最大 70。用 <code>svm-scale -l 0 -u 1</code>，測試資料中的 80 會變成多少？</p>
+    <details class="answer"><summary>看解答</summary><div>(80 − 20) / (70 − 20) = 1.2。用的是訓練資料的 min／max，所以測試值可能超出 [0, 1]，這是正常的。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">4. 有 1000 筆資料，做 10 折交叉驗證，每一輪的訓練與驗證各幾筆？總共要訓練幾次模型？</p>
+    <details class="answer"><summary>看解答</summary><div>每折 100 筆：每輪訓練 900 筆、驗證 100 筆，共訓練 10 次。若是 LOOCV，則每輪訓練 999 筆、驗證 1 筆，共 1000 次。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 作業要用 LIBSVM 分類一份有「城市」類別欄位和三個數值欄位的資料，請寫出完整步驟。</p>
+    <details class="answer"><summary>看解答</summary><div>① 城市做 one-hot，和數值欄位一起轉成 <code>label index:value</code> 格式（可用稀疏格式）；② 先切出測試集，用 <code>svm-scale -l 0 -u 1 -s scale.params train</code> 縮放訓練資料，再用 <code>-r scale.params</code> 縮放測試資料；③ 用 RBF 核（<code>-t 2</code>）；④ 在 C、γ 的格點上用 <code>-v 5</code> 做交叉驗證，選準確率最高（類別不平衡時可改看 F1）的組合；⑤ 用最佳的 C、γ 在整個訓練集上訓練出 model；⑥ <code>svm-predict</code> 在測試集上評估一次。要機率輸出的話，訓練和預測都加 <code>-b 1</code>。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>特徵：相關／不相關／重複。選取：過濾（Fisher score）、包裝（前向、後向、窮舉 \(2^p - 1\)）、嵌入（決策樹、LASSO 的 L1 讓權重變 0）。</li>
+    <li>過度配適 = 訓練錯誤低、測試錯誤高；原因：資料少、模型太複雜。選測試錯誤最低的複雜度。</li>
+    <li>混淆矩陣：列是實際、欄是預測；TP、FN／FP、TN。</li>
+    <li>Accuracy = (TP + TN)/All；Precision = TP/(TP + FP)；Recall = TPR = TP/(TP + FN)。</li>
+    <li>Specificity = TN/(FP + TN)；FPR = FP/(FP + TN) = 1 − 特異度。</li>
+    <li>F1 = 2PR/(P + R)；\(F_\beta\)：β &gt; 1 重召回、β &lt; 1 重精確。</li>
+    <li>不平衡時準確率會騙人：3% 罹癌全猜沒有 = 97%。講義練習：Acc 96.5%、P 39.13%、R 30%、F1 33.96%。</li>
+    <li>ROC：門檻由高往低，畫 (FPR, TPR)；左上角最好，對角線亂猜；AUC 1 完美、0.5 亂猜。</li>
+    <li>保留法 2/3 + 1/3；k 折（k = 5、10）；LOOCV k = n；分層保持類別比例。測試集只用一次。</li>
+    <li>不平衡：過採樣、欠採樣、SMOTE（只對訓練集）；移動門檻、類別加權、集成。LIBSVM：格式 → scale（-s / -r）→ RBF → CV 找 C、γ → 訓練 → 預測；-b 1 要兩邊都加。</li>
+  </ol>
+
+  <footer>講義：DM_week10.pdf、DM_week10_libsvm.pdf（2026/11/13）</footer>
+</main>
+</div>
+</body>
+</html>

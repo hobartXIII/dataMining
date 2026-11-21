@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>W11 分群</title>
+  <meta name="description" content="資料探勘 W11：分群的定義與好分群的條件、四種群的觀念、資料矩陣與相異度矩陣、各種屬性的相異度、K-means、K-means++、K-medoids（PAM、CLARA）、階層式分群與連結準則">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+  <link rel="stylesheet" href="../assets/style.css">
+  <link rel="stylesheet" href="../assets/highlighter.css">
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+  <script defer src="../assets/highlighter.js"></script>
+  <script defer src="../assets/common.js"></script>
+  <script defer src="w11.js"></script>
+</head>
+<body data-chapter="w11">
+<div class="layout">
+<nav class="toc" aria-label="本頁目錄"></nav>
+<main>
+  <p class="eyebrow">W11 · 講義：DM_week11（2026/11/20）· 從分類進入分群</p>
+  <h1>🫧 分群</h1>
+
+  <div class="callout key">
+    <p class="def">分群（Clustering）是把一組資料物件分成好幾群，讓同一群內的物件彼此相似、不同群的物件彼此不相似；它不需要類別標籤，是非監督式學習。</p>
+    <ul>
+      <li>「相似」取決於資料怎麼表示、用哪種相似度或距離；同一份資料可以有好幾種合理的分法，沒有放諸四海皆準的最佳分群。</li>
+      <li>不同屬性類型用不同的相異度：名目看不相符比例、二元分對稱與非對稱、數值用 Minkowski 距離、順序先轉成 [0, 1] 的排名、混合型用 Gower 距離。</li>
+      <li>四大方法：分割式（K-means、K-medoids）、階層式（凝聚、分裂）、密度式、模型式。</li>
+      <li>K-means 要先給 K、對初始值和離群值敏感、找不出非凸的群；K-means++ 改善初始化，K-medoids 用真實資料點當代表、比較耐離群值。</li>
+    </ul>
+  </div>
+
+  <h2 id="summary">1. 本章摘要</h2>
+  <ul>
+    <li>分群又叫群集分析（cluster analysis）或資料分割（data segmentation）。用途：發現隱藏的結構、用少數幾群摘要大量資料、支援後續分析（顧客分群與推薦、分類的前處理、離群值偵測）。</li>
+    <li>好的分群：群內相似度高（cohesive）、群間相似度低（well separated）。群的定義有四種：分離良好、原型式、連續性（連通）、密度式。</li>
+    <li>輸入有兩種形式：資料矩陣（n 個物件 × p 個屬性，two-mode）與相異度矩陣（n × n，one-mode）。</li>
+    <li>K-means：選 K 個中心 → 每點分給最近的中心 → 重算中心（平均）→ 重複到沒有點換群。複雜度 O(nKdt)，常收斂到 SSE 的區域最小值。</li>
+    <li>階層式分群建出巢狀的群，切在某一層得到最後結果；凝聚式（由下而上）每次合併最近的兩群，群間距離由連結準則決定：單一、完全、平均、中心、Ward。</li>
+  </ul>
+
+  <h2 id="concepts">2. 核心概念</h2>
+
+  <h3>2.1 分群演算法應有的特性（第 5～8 頁）</h3>
+  <ol>
+    <li>能處理不同資料類型：二元、類別、順序、數值、文字、圖、序列、影像、影片。</li>
+    <li>可擴展性（Scalability）：能有效處理大型資料集。</li>
+    <li>能找出任意形狀的群，不只是緊密的球形群。</li>
+    <li>對雜訊與離群值穩健（robust）。</li>
+    <li>盡量少依賴領域知識與使用者給的參數，例如最好不用事先知道群數。</li>
+    <li>可漸進式分群、對輸入順序不敏感：新資料進來不用整個重算。</li>
+    <li>能處理高維資料。</li>
+    <li>支援使用者限制，例如兩個物件必須同群（must-link）或不能同群（cannot-link）。</li>
+    <li>可解釋、可用：結果要看得懂、能拿來行動。</li>
+  </ol>
+
+  <h3>2.2 分群可能有歧義（第 9～13 頁）</h3>
+  <ul>
+    <li>同一份資料可以合理地分成 2 群、4 群或 6 群：某個細節層級有用的分法，換一個層級不一定有用。</li>
+    <li>不同的相似度量度會得到不同的群。最終標準是：分群結果對想做的任務有沒有用。</li>
+    <li>音樂例子：《給愛麗絲》的自我相似矩陣（Self-Similarity Matrix）可以把曲子切成好幾段，相似的段落會重複出現。</li>
+  </ul>
+
+  <h3>2.3 四種「群」的觀念（第 15～19 頁）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>觀念</th><th>定義</th><th>特性</th></tr>
+      <tr><td>① 分離良好（Well-separated）</td><td>群內每一點和群內任一點，都比和群外任何點更相似</td><td>適合緊密、分得很開的群；描述不了細長或交纏的群</td></tr>
+      <tr><td>② 原型式（Prototype-based）</td><td>每個物件分給最近（最相似）的原型所屬的群</td><td>原型可以是中心點（centroid，所有點的平均，不一定是真實資料點）或代表點（medoid，到群內其他點總距離最小的真實資料點）</td></tr>
+      <tr><td>③ 連續性（Contiguity-based）</td><td>群是一串由「鄰近」點連起來的點，又叫連通式</td><td>群內的點不必彼此都很近；群可以是任意的連通形狀</td></tr>
+      <tr><td>④ 密度式（Density-based）</td><td>群是密集的區域，被低密度區域和其他密集區域隔開</td><td>可找任意形狀、能把稀疏的點當雜訊</td></tr>
+    </table>
+  </div>
+  <p>分群品質取決於：資料表示與相似度量度、演算法採用的群定義、演算法的假設與參數，以及找到的結構對任務有沒有用。應用：生物（物種分群、生物亞型）、資訊檢索（相似文件）、遙測（土地利用）、行銷（顧客分群）、地震研究（震央的空間樣式揭露斷層）。</p>
+
+  <h3>2.4 資料矩陣與相異度矩陣（第 24～25 頁）</h3>
+  <div class="callout key">
+    <p class="def">資料矩陣是 n 個物件 × p 個屬性的表（物件對屬性，two-mode）；相異度矩陣是 n × n 的表，第 (i, j) 格是物件 i 和 j 的相異度 d(i, j)（物件對物件，one-mode）。</p>
+    <ul>
+      <li>相異度矩陣對稱、對角線是 0，所以通常只寫下三角。</li>
+      <li>屬性類型：名目（紅、綠、藍）、二元（正面、反面）、數值（重量、身高）、順序（大一、大二、大三、大四）。</li>
+    </ul>
+  </div>
+
+  <h3>2.5 各種屬性的相異度（第 27～34 頁）</h3>
+  <ul>
+    <li><strong>名目</strong>：\(d(i, j) = (p - m)/p\)，p 是變數數，m 是相符的變數數。</li>
+    <li><strong>對稱二元</strong>（兩個狀態一樣重要，例：正反面）：\(d = (r + s)/(q + r + s + t)\)。</li>
+    <li><strong>非對稱二元</strong>（兩個狀態不一樣重要，例：有沒有生病）：\(d = (r + s)/(q + r + s)\)，忽略「兩邊都是 0」的 t。</li>
+    <li><strong>數值</strong>：歐氏（L2）、曼哈頓（L1）、Minkowski（\(L_h\)）、加權 Minkowski、上確界（Chebyshev、\(L_\infty\)）。</li>
+    <li><strong>順序</strong>：把值換成排名 \(r_{if} \in \{1, \dots, M_f\}\)，再映射到 [0, 1]：\(z_{if} = (r_{if} - 1)/(M_f - 1)\)，然後當數值算。例：大一 0、大二 1/3、大三 2/3、大四 1。</li>
+    <li><strong>混合型</strong>：Gower 距離，每個屬性先算正規化的相異度，再加權平均。</li>
+  </ul>
+
+  <div class="widget" id="w-dist">
+    <p class="w-title">Minkowski 距離</p>
+    <p class="w-desc">兩點 \(x_1\)、\(x_2\)（預設是教科書的 (1, 2) 與 (3, 5)）。h = 1 是曼哈頓、h = 2 是歐氏、h 越大越接近「最大的那一維差距」（上確界）。下圖是和 \(x_1\) 距離為 1 的點形成的「單位圓」。</p>
+    <div class="controls">
+      <label>x₁ = (<input type="number" id="ds-a1" value="1" step="1">, <input type="number" id="ds-a2" value="2" step="1">)</label>
+      <label>x₂ = (<input type="number" id="ds-b1" value="3" step="1">, <input type="number" id="ds-b2" value="5" step="1">)</label>
+      <label>h <input type="range" id="ds-h" min="1" max="11" step="0.5" value="2"><span class="val" data-for="ds-h"></span></label>
+    </div>
+    <div class="row">
+      <div class="col" style="flex:0 1 220px"><div class="canvas-wrap" style="padding:6px"><svg class="plot" id="ds-svg" aria-label="單位圓"></svg></div></div>
+      <div class="col" style="flex:1 1 280px"><div class="readout" id="ds-out" style="margin-top:0"></div></div>
+    </div>
+  </div>
+
+  <div class="widget" id="w-bin">
+    <p class="w-title">非對稱二元相異度</p>
+    <p class="w-desc">講義第 29 頁（教科書的病人資料）：發燒、咳嗽、檢驗 1～4，Y／P 當 1、N 當 0；性別是對稱屬性，這裡不算。點選兩位病人看列聯表。</p>
+    <div class="table-wrap" id="bn-table"></div>
+    <div class="controls"><span class="muted">比較：</span><div class="seg" id="bn-pairs"></div></div>
+    <div class="readout" id="bn-out"></div>
+  </div>
+
+  <div class="widget" id="w-mixed">
+    <p class="w-title">名目、順序、數值與混合型（Gower）</p>
+    <p class="w-desc">講義第 27、33～34 頁（教科書的 4 個物件）：test-1 是名目、test-2 是順序（fair &lt; good &lt; excellent）、test-3 是數值。勾選要用哪些屬性，看相異度矩陣怎麼變；點矩陣中的一格看算式。全部勾選就是 Gower 距離：d(2, 1) = 0.849。</p>
+    <div class="table-wrap" id="mx-data"></div>
+    <div class="controls">
+      <label><input type="checkbox" class="mx-use" value="0" checked> test-1（名目）</label>
+      <label><input type="checkbox" class="mx-use" value="1" checked> test-2（順序）</label>
+      <label><input type="checkbox" class="mx-use" value="2" checked> test-3（數值）</label>
+    </div>
+    <div class="row">
+      <div class="col" id="mx-mat"></div>
+      <div class="col" style="flex:1 1 280px"><div class="readout" id="mx-out" style="margin-top:0"></div></div>
+    </div>
+  </div>
+
+  <h2 id="algo">3. 演算法與方法</h2>
+
+  <h3>3.1 四大分群方法（第 36 頁）</h3>
+  <div class="table-wrap">
+    <table>
+      <tr><th>方法</th><th>做法</th><th>例子</th></tr>
+      <tr><td>① 分割式（Partitioning）</td><td>反覆形成或修正一個分割，讓某個準則（例：SSE）最佳</td><td>K-means、K-medoids</td></tr>
+      <tr><td>② 階層式（Hierarchical）</td><td>依某個準則建立資料的階層式分解</td><td>凝聚式（AGNES）、分裂式、Bisecting K-means</td></tr>
+      <tr><td>③ 密度式（Density-based）</td><td>依連通性與密度函數</td><td><span class="tag add">補充</span>DBSCAN、OPTICS</td></tr>
+      <tr><td>④ 模型式（Model-based）</td><td>假設每一群有一個模型，讓模型去配適資料</td><td><span class="tag add">補充</span>高斯混合模型（EM 演算法）</td></tr>
+    </table>
+  </div>
+
+  <h3>3.2 分割式方法與 K-means（第 38～47 頁）</h3>
+  <div class="callout key">
+    <p class="def">分割式方法把 n 個物件的資料庫 D 分成 K 群，讓目標函數最佳，例如每點到所屬群代表（中心或代表點）的距離平方和 SSE 最小；K-means 用群的平均當代表。</p>
+    <ul>
+      <li>全域最佳要列舉所有可能的分割，很快就不可行，所以用啟發式、反覆改進的方法。</li>
+      <li>K-means（Lloyd 演算法，1957 提出、1982 發表）：要先指定 K，每群有一個中心，每點分給最近的中心。</li>
+      <li>步驟：① 選 K 個初始中心 → ② 重新分配：每點分給最近的中心 → ③ 更新中心：用目前分割算每群的平均 → ④ 重複 ②③ 直到沒有點換群。</li>
+      <li>標準 K-means 用歐氏距離、用平均更新中心。</li>
+    </ul>
+  </div>
+  <ul>
+    <li>效率：O(nKdt)，n 物件數、K 群數、d 維度、t 迭代次數，算相對有效率。</li>
+    <li>常收斂到 SSE 的區域最小值：初始中心不同，結果可能不同（講義第 45 頁：另一組隨機初始中心收斂到 SSE 較高的解）。實務上換不同初始值多跑幾次。</li>
+    <li>要事先指定 K：實務上試一個範圍的 K，再用手肘法（elbow method）或輪廓係數（silhouette score）挑。</li>
+    <li>對雜訊和離群值敏感（離群值會把平均拉走）；群的大小或密度差很多時表現差；找不出非凸（non-convex）的群。</li>
+  </ul>
+
+  <div class="widget" id="w-km">
+    <p class="w-title">K-means、K-means++ 與 DBSCAN 遊樂場</p>
+    <p class="w-desc">按「下一步」交替做「分配」和「更新中心」，看 SSE 一路下降。換初始化方式或按「重新初始化」，會收斂到不同的解。試試「大小不一」「月牙形」與「有離群值」三份資料，看 K-means 的限制；再切到 DBSCAN 比較。下方小圖是手肘法：每個 K 跑 10 次取最小 SSE。</p>
+    <div class="controls">
+      <label>資料 <select id="km-data"><option value="blobs">三群</option><option value="uneven">大小不一</option><option value="moons">月牙形</option><option value="outlier">有離群值</option></select></label>
+      <label>方法 <select id="km-algo"><option value="km">K-means</option><option value="dbscan">DBSCAN（補充）</option></select></label>
+    </div>
+    <div class="controls" id="km-ctl">
+      <label>K <input type="range" id="km-k" min="1" max="8" step="1" value="3"><span class="val" data-for="km-k"></span></label>
+      <label>初始化 <select id="km-init"><option value="rand">隨機選 K 個點</option><option value="pp">K-means++</option></select></label>
+      <button class="btn primary" type="button" id="km-step">下一步 ▶</button>
+      <button class="btn" type="button" id="km-run">跑到收斂</button>
+      <button class="btn" type="button" id="km-reinit">重新初始化</button>
+    </div>
+    <div class="controls" id="db-ctl" hidden>
+      <label>ε <input type="range" id="db-eps" min="0.2" max="2" step="0.05" value="0.8"><span class="val" data-for="db-eps"></span></label>
+      <label>MinPts <input type="range" id="db-min" min="2" max="10" step="1" value="4"><span class="val" data-for="db-min"></span></label>
+    </div>
+    <div class="row">
+      <div class="col" style="flex:1 1 340px"><div class="canvas-wrap" style="padding:6px"><svg class="plot" id="km-svg" aria-label="分群結果"></svg></div></div>
+      <div class="col" style="flex:0 1 220px"><div class="canvas-wrap" style="padding:6px"><svg class="plot" id="km-elbow" aria-label="手肘法"></svg></div></div>
+    </div>
+    <div class="readout" id="km-out"></div>
+  </div>
+
+  <h3>3.3 K-means 的變形（第 51～58 頁）</h3>
+  <div class="callout key">
+    <p class="def">K-means++ 改善初始化：第一個中心隨機選，之後每個點被選為下一個中心的機率和 \(D(x)^2\) 成正比，\(D(x)\) 是它到最近已選中心的距離；離現有中心越遠越容易被選到。</p>
+    <ul>
+      <li>重複直到選出 K 個初始中心，接著照一般 K-means 跑（〈k-means++: The Advantages of Careful Seeding〉，SODA 2007）。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>變形</th><th>群的代表</th><th>特點</th></tr>
+      <tr><td>K-medoids</td><td>群內真實存在的一個資料點（medoid）</td><td>medoid 讓到群內其他點的總相異度最小；比較耐離群值</td></tr>
+      <tr><td>K-medians</td><td>每一維各自取中位數</td><td>用 L1（曼哈頓）距離；中位數比平均不受極端值影響</td></tr>
+      <tr><td>K-modes</td><td>每個屬性取眾數</td><td>處理類別資料（K-means 不能處理非數值）；相異度用不相符的屬性數</td></tr>
+    </table>
+  </div>
+
+  <h3>3.4 K-medoids：PAM 與 CLARA（第 54～57 頁）</h3>
+  <ol>
+    <li><strong>PAM</strong>（Partitioning Around Medoids）：a. BUILD：選 K 個初始 medoid；b. 每個物件分給最近的 medoid；c. SWAP：評估每個 medoid 和每個非 medoid 交換的效果；d. 執行讓總成本下降最多的交換；e. 重複到沒有交換能降低成本。</li>
+    <li>講義第 56 頁的例子：K = 2，總成本 20 時嘗試一個交換得到 26，成本變高 → 拒絕交換。</li>
+    <li>PAM 對小資料有效，但每輪要評估 K(n − K) 種交換，不適合大資料。</li>
+    <li><strong>CLARA</strong>（Clustering LARge Applications，類似 Apriori 的抽樣法）：① 從全資料隨機抽幾份可處理大小的樣本；② 每份樣本跑 PAM 得到一組候選 medoid；③ 每組候選都把全資料分給最近的 medoid、算總相異度；④ 選全資料成本最低的那組。</li>
+  </ol>
+
+  <h3>3.5 階層式分群（第 60～75 頁）</h3>
+  <div class="callout key">
+    <p class="def">階層式分群建出巢狀的群（樹狀圖，dendrogram），再選一個切割高度得到最後的分群；不用事先選 K，但合併或分裂一旦做了就不能反悔。</p>
+    <ul>
+      <li>凝聚式（Agglomerative，由下而上，比較常用）：每個物件自成一群 → 算鄰近度矩陣 → 重複「合併最近的兩群、更新鄰近度矩陣」直到剩一群。</li>
+      <li>分裂式（Divisive，由上而下）：全部在同一群，遞迴地切成更小的群。要決定：下一個切哪一群、怎麼切、怎麼評估候選切法；達到停止條件（例：目標群數）就停。</li>
+      <li>和 K-means 不同：不會反覆重新分配物件。</li>
+    </ul>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>連結準則</th><th>兩群的距離</th><th>特性</th></tr>
+      <tr><td>單一連結（MIN）</td><td>跨群最近的一對點</td><td>看局部連接，可能沿著一串鄰近點把兩群連起來（鏈結效應）</td></tr>
+      <tr><td>完全連結（MAX）</td><td>跨群最遠的一對點</td><td>偏好緊密的群</td></tr>
+      <tr><td>平均連結（Group average）</td><td>所有跨群點對距離的平均</td><td>介於兩者之間</td></tr>
+      <tr><td>中心連結（Centroid）</td><td>兩群中心點的距離</td><td>需要座標</td></tr>
+      <tr><td>Ward 連結</td><td>合併後群內 SSE 的增加量 ΔSSE</td><td>選 ΔSSE 最小的一對合併</td></tr>
+    </table>
+  </div>
+
+  <div class="widget" id="w-hier">
+    <p class="w-title">凝聚式階層分群：單一 vs. 完全連結</p>
+    <p class="w-desc">講義第 70 頁的 5 點鄰近度矩陣。每一步找出矩陣中最小的一格（框起來）合併，再依連結準則更新合併後那一列。單一和完全連結前兩步一樣（{3, 5}、{1, 4}），第三步開始不同。</p>
+    <div class="controls">
+      <label>連結 <select id="hc-link"><option value="single">單一（MIN）</option><option value="complete">完全（MAX）</option><option value="average">平均</option></select></label>
+      <button class="btn primary" type="button" id="hc-next">合併下一對 ▶</button>
+      <button class="btn" type="button" id="hc-reset">重來</button>
+      <span class="muted" id="hc-count"></span>
+    </div>
+    <div class="row">
+      <div class="col" id="hc-mat"></div>
+      <div class="col" style="flex:1 1 260px"><div class="canvas-wrap" style="padding:6px"><svg class="plot" id="hc-svg" aria-label="樹狀圖"></svg></div></div>
+    </div>
+    <div class="readout" id="hc-out"></div>
+  </div>
+
+  <h3>3.6 Bisecting K-means 與講義之後的內容</h3>
+  <ul>
+    <li>Bisecting K-means（〈A comparison of document clustering techniques〉，KDD workshop 2000）：要得到 K 群，就反覆把某一群用 2-means 切成兩群，直到有 K 群為止。</li>
+  </ul>
+  <div class="callout warn">
+    <p><span class="tag chk">待確認</span>講義文字只擷取到第 76 頁 Bisecting K-means 的第一句（「Select one of these clus…」），之後的內容（可能包括 Bisecting 的細節、密度式與模型式方法、分群品質評估）沒擷取到。以下是 <span class="tag add">補充</span>依教科書整理的重點，請對照原始投影片。</p>
+  </div>
+  <ul>
+    <li><span class="tag add">補充</span><strong>Bisecting K-means</strong>：每輪挑一群（通常是 SSE 最大或最大的群）切開，試幾次 2-means、留 SSE 最小的切法。</li>
+    <li><span class="tag add">補充</span><strong>DBSCAN</strong>：參數 ε（鄰域半徑）與 MinPts。ε 鄰域內至少有 MinPts 個點（含自己）的是核心點；在核心點鄰域內但自己不是核心的是邊界點；其餘是雜訊。彼此可達的核心點和它們的邊界點組成一群。可找任意形狀、不用給 K、會標出雜訊，但對 ε、MinPts 敏感，密度差很多時難調。</li>
+    <li><span class="tag add">補充</span><strong>模型式</strong>：例如高斯混合模型（GMM），假設資料由 K 個高斯分布混合而成，用 EM 演算法交替做 E 步（算每點屬於各群的機率，軟分配）與 M 步（更新各高斯的參數）。</li>
+    <li><span class="tag add">補充</span><strong>評估分群</strong>：手肘法（畫 K 對 SSE，找下降變緩的轉折點）；輪廓係數 \(s(i) = \frac{b(i) - a(i)}{\max(a(i), b(i))}\)，a 是到同群其他點的平均距離、b 是到最近的別群的平均距離，介於 −1 和 1，越接近 1 越好。</li>
+  </ul>
+
+  <h2 id="formula">4. 公式整理</h2>
+  <h3>4.1 名目與二元（第 27～28 頁）</h3>
+  $$d(i, j) = \frac{p - m}{p}, \qquad d_{sym}(i, j) = \frac{r + s}{q + r + s + t}, \qquad d_{asym}(i, j) = \frac{r + s}{q + r + s}$$
+  <p>q：i、j 都是 1；r：i 是 1、j 是 0；s：i 是 0、j 是 1；t：都是 0。</p>
+  <h3>4.2 數值（第 30 頁）</h3>
+  $$d(i, j) = \sqrt[h]{|x_{i1} - x_{j1}|^h + |x_{i2} - x_{j2}|^h + \cdots + |x_{ip} - x_{jp}|^h}$$
+  $$h = 1:\ \text{曼哈頓}, \qquad h = 2:\ \text{歐氏}, \qquad h \to \infty:\ d(i, j) = \max_f |x_{if} - x_{jf}|$$
+  $$\text{加權：} d(i, j) = \sqrt[h]{w_1|x_{i1} - x_{j1}|^h + \cdots + w_p|x_{ip} - x_{jp}|^h}$$
+  <h3>4.3 順序與混合型（第 32～34 頁）</h3>
+  $$z_{if} = \frac{r_{if} - 1}{M_f - 1}, \qquad d(i, j) = \frac{\sum_f w_f\, d_{ij}^{(f)}}{\sum_f w_f}$$
+  <p>數值屬性的 \(d_{ij}^{(f)} = \frac{|x_{if} - x_{jf}|}{\max_h x_{hf} - \min_h x_{hf}}\)（<span class="tag add">補充</span>依教科書：用該屬性的全距正規化）。</p>
+  <h3>4.4 分割式的目標函數（第 38 頁）</h3>
+  $$SSE = \sum_{k=1}^{K} \sum_{x_i \in C_k} \lVert x_i - c_k \rVert^2$$
+  <h3>4.5 連結準則（第 68～73 頁）</h3>
+  $$D_{single}(C_i, C_j) = \min_{p \in C_i,\, p' \in C_j} d(p, p'), \qquad D_{complete}(C_i, C_j) = \max_{p \in C_i,\, p' \in C_j} d(p, p')$$
+  $$D_{avg}(C_i, C_j) = \frac{1}{|C_i||C_j|}\sum_{p \in C_i}\sum_{p' \in C_j} d(p, p'), \qquad D_{centroid}(C_i, C_j) = \lVert c_i - c_j \rVert$$
+  $$\Delta SSE(C_i, C_j) = SSE(C_i \cup C_j) - SSE(C_i) - SSE(C_j)$$
+
+  <h2 id="examples">5. 範例演算</h2>
+  <div class="steps">
+    <p class="steps-title">例一：非對稱二元相異度（第 29 頁）</p>
+    <ol>
+      <li>Jack = 1 0 1 0 0 0、Mary = 1 0 1 0 1 0、Jim = 1 1 0 0 0 0（發燒、咳嗽、test-1～4）</li>
+      <li>d(Jack, Mary)：q = 2（發燒、test-1）、r = 0、s = 1（test-3）→ (0 + 1)/(2 + 0 + 1) = 0.33</li>
+      <li>d(Jack, Jim)：q = 1、r = 1（test-1）、s = 1（咳嗽）→ (1 + 1)/(1 + 1 + 1) = 0.67</li>
+      <li>d(Jim, Mary)：q = 1、r = 1（咳嗽）、s = 2（test-1、test-3）→ (1 + 2)/(1 + 1 + 2) = 0.75
+        <span class="why">Jack 和 Mary 最可能得同一種病；Jim 和 Mary 最不像。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例二：順序屬性與 Gower 距離（第 33～34 頁）</p>
+    <ol>
+      <li>test-2 有三個狀態 fair &lt; good &lt; excellent，\(M_f = 3\)：排名 1 → (1 − 1)/2 = 0、排名 2 → 0.5、排名 3 → 1</li>
+      <li>物件 1 = (A, excellent, 45)、物件 2 = (B, fair, 22)</li>
+      <li>test-1 名目：A ≠ B → 1；test-2 順序：|1 − 0| = 1；test-3 數值：|45 − 22| / (64 − 22) = 23/42 ≈ 0.548</li>
+      <li>\(d(1, 2) = (1 + 1 + 0.548)/3 \approx 0.849\)
+        <span class="why">三個屬性權重都是 1。上面的混合型元件可以驗算整個矩陣。</span></li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例三：單一連結（第 70 頁）</p>
+    <ol>
+      <li>最小的是 d(3, 5) = 0.7 → 合併 {3, 5}</li>
+      <li>更新：d({3,5}, 1) = min(3.4, 3.7) = 3.4、d({3,5}, 2) = min(2.0, 2.2) = 2.0、d({3,5}, 4) = min(4.2, 4.4) = 4.2</li>
+      <li>最小的是 d(1, 4) = 1.2 → 合併 {1, 4}；d({1,4}, 2) = min(2.3, 1.8) = 1.8、d({1,4}, {3,5}) = 3.4</li>
+      <li>最小的是 1.8 → 合併 {1, 2, 4}；d({1,2,4}, {3,5}) = min(3.4, 2.0) = 2.0</li>
+      <li>最後在 2.0 合併成一群</li>
+    </ol>
+  </div>
+  <div class="steps">
+    <p class="steps-title">例四：完全連結（第 70 頁）</p>
+    <ol>
+      <li>前兩步一樣：0.7 合併 {3, 5}，1.2 合併 {1, 4}</li>
+      <li>更新用最大值：d({1,4}, 2) = max(2.3, 1.8) = 2.3、d({3,5}, 2) = max(2.0, 2.2) = 2.2、d({1,4}, {3,5}) = max(3.4, 3.7, 4.2, 4.4) = 4.4</li>
+      <li>最小的是 2.2 → 合併 {2, 3, 5}（單一連結是 2 併到 {1, 4}）</li>
+      <li>最後在 4.4 合併成一群
+        <span class="why">同一個矩陣，換連結準則就得到不同的兩群：單一 {1, 2, 4} | {3, 5}、完全 {1, 4} | {2, 3, 5}。</span></li>
+    </ol>
+  </div>
+
+  <h2 id="confuse">6. 易混淆處</h2>
+  <div class="table-wrap">
+    <table>
+      <tr><th>比較項目</th><th>A</th><th>B</th><th>判斷關鍵</th></tr>
+      <tr><td>分類 vs. 分群</td><td>分類：有標籤、監督式</td><td>分群：沒標籤、非監督式</td><td>訓練資料有沒有類別標籤</td></tr>
+      <tr><td>資料矩陣 vs. 相異度矩陣</td><td>n × p，物件對屬性（two-mode）</td><td>n × n，物件對物件（one-mode）</td><td>欄是屬性還是物件</td></tr>
+      <tr><td>對稱 vs. 非對稱二元</td><td>對稱：分母含 t</td><td>非對稱：忽略「兩邊都是 0」的 t</td><td>兩個都沒生病不代表相似</td></tr>
+      <tr><td>centroid vs. medoid</td><td>centroid：平均，不一定是真實點</td><td>medoid：真實資料點</td><td>medoid 比較耐離群值</td></tr>
+      <tr><td>K-means vs. K-medoids</td><td>K-means：更新中心＝平均，O(nKdt)</td><td>K-medoids（PAM）：交換代表點，成本高</td><td>大資料用 CLARA 抽樣</td></tr>
+      <tr><td>K-medians vs. K-modes</td><td>K-medians：中位數、L1</td><td>K-modes：眾數、類別資料</td><td>資料是數值還是類別</td></tr>
+      <tr><td>單一 vs. 完全連結</td><td>單一：最近點對，會鏈結</td><td>完全：最遠點對，偏好緊密</td><td>更新時取 min 還是 max</td></tr>
+      <tr><td>凝聚 vs. 分裂</td><td>凝聚：由下而上合併</td><td>分裂：由上而下切開</td><td>凝聚比較常用</td></tr>
+      <tr><td>K-means vs. 階層式</td><td>K-means：要給 K、會反覆重新分配</td><td>階層式：不用給 K、合併不能反悔</td><td>階層式最後再選切割高度</td></tr>
+    </table>
+  </div>
+
+  <h2 id="quiz">7. 複習問題</h2>
+  <h3>7.1 選擇題</h3>
+  <div class="quiz" data-answer="B">
+    <p class="q">1. 兩點 (1, 2) 和 (3, 5) 的上確界（\(L_\infty\)）距離是多少？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 2</button><button data-opt="B">(B) 3</button>
+      <button data-opt="C">(C) 3.61</button><button data-opt="D">(D) 5</button>
+    </div>
+    <div class="explain" hidden><strong>(B)</strong>。兩維的差分別是 2 和 3，取最大值 3。(C) 是歐氏、(D) 是曼哈頓。</div>
+  </div>
+  <div class="quiz" data-answer="C">
+    <p class="q">2. 下列哪一種情況 K-means 最可能表現不好？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 三個大小相近、分得很開的球形群</button><button data-opt="B">(B) 資料已經標準化</button>
+      <button data-opt="C">(C) 兩個彼此交纏的月牙形群</button><button data-opt="D">(D) 已知正確的 K</button>
+    </div>
+    <div class="explain" hidden><strong>(C)</strong>。K-means 依「離哪個中心近」分群，邊界是直線（Voronoi），找不出非凸的群。可以在遊樂場選「月牙形」看看，再切到 DBSCAN 比較。</div>
+  </div>
+  <div class="quiz" data-answer="A">
+    <p class="q">3. 計算兩位病人在「有沒有某些症狀」上的相異度時，為什麼用非對稱二元？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 兩人都「沒有」某症狀，不代表他們相似</button><button data-opt="B">(B) 因為症狀是數值屬性</button>
+      <button data-opt="C">(C) 為了讓相異度大於 1</button><button data-opt="D">(D) 因為 q 通常是 0</button>
+    </div>
+    <div class="explain" hidden><strong>(A)</strong>。大部分症狀大家都沒有，如果把 t（都是 0）算進分母，每個人都會顯得很像。</div>
+  </div>
+  <div class="quiz" data-answer="D">
+    <p class="q">4. K-means++ 選下一個初始中心的機率和什麼成正比？</p>
+    <div class="opts">
+      <button data-opt="A">(A) 該點的密度</button><button data-opt="B">(B) 到最近中心的距離 D(x)</button>
+      <button data-opt="C">(C) 1/D(x)</button><button data-opt="D">(D) \(D(x)^2\)</button>
+    </div>
+    <div class="explain" hidden><strong>(D)</strong>。離現有中心越遠的點越可能被選，初始中心因此分散開來。</div>
+  </div>
+
+  <h3>7.2 觀念題</h3>
+  <div class="quiz">
+    <p class="q">1. 為什麼 K-means 一定會收斂，卻不一定找到最好的分群？</p>
+    <details class="answer"><summary>看解答</summary><div>分配步驟（每點去最近的中心）和更新步驟（中心換成平均）都不會讓 SSE 變大，而分割的可能數有限，所以一定會停。但它只是沿著 SSE 往下走，停在哪裡取決於初始中心，常常是區域最小值；所以要換不同初始值多跑幾次，或用 K-means++。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. K-medoids 為什麼比 K-means 不怕離群值？代價是什麼？</p>
+    <details class="answer"><summary>看解答</summary><div>平均會被極端值拉走，而 medoid 必須是群內的真實資料點，而且是讓總相異度最小的那一個，一個離群值很難讓它移動。代價是計算量：PAM 每輪要試 K(n − K) 種交換、每種都要重算成本，大資料要改用 CLARA 抽樣。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 單一連結的「鏈結效應」是什麼？</p>
+    <details class="answer"><summary>看解答</summary><div>單一連結只看跨群最近的一對點，只要兩群之間有一串彼此相鄰的點（像一座橋），兩群就會很早被併在一起，形成又細又長的群。好處是能找出非橢圓形的群，壞處是對雜訊形成的「橋」很敏感。</div></details>
+  </div>
+
+  <h3>7.3 計算題</h3>
+  <div class="quiz">
+    <p class="q">1. 順序屬性「年級」有大一～大四四個狀態，大二和大四的相異度是多少？</p>
+    <details class="answer"><summary>看解答</summary><div>\(M_f = 4\)：大二 → (2 − 1)/3 = 1/3、大四 → (4 − 1)/3 = 1，相異度 |1/3 − 1| = 2/3 ≈ 0.667。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">2. 一維資料 1, 2, 3, 10, 11, 12，K = 2，初始中心 1 和 2。跑 K-means 直到收斂，最後的中心和 SSE 是多少？</p>
+    <details class="answer"><summary>看解答</summary><div>第 1 輪分配：{1} 和 {2, 3, 10, 11, 12} → 中心 1、7.6。第 2 輪：1、2、3 離 1 比較近（3 到 1 是 2、到 7.6 是 4.6），10、11、12 去 7.6 → {1, 2, 3}、{10, 11, 12} → 中心 2、11。第 3 輪不變，收斂。SSE = (1 + 0 + 1) + (1 + 0 + 1) = 4。</div></details>
+  </div>
+  <div class="quiz">
+    <p class="q">3. 用講義第 70 頁的矩陣做<strong>平均連結</strong>，前三步分別合併哪些群、在什麼高度？</p>
+    <details class="answer"><summary>看解答</summary><div>① 0.7 合併 {3, 5}；② 1.2 合併 {1, 4}；③ d({1,4}, 2) = (2.3 + 1.8)/2 = 2.05、d({3,5}, 2) = (2.0 + 2.2)/2 = 2.1、d({1,4}, {3,5}) = (3.4 + 3.7 + 4.2 + 4.4)/4 = 3.925 → 2.05 合併 {1, 2, 4}；最後 d({1,2,4}, {3,5}) = (3.4 + 3.7 + 2.0 + 2.2 + 4.2 + 4.4)/6 = 3.317。元件選「平均」可以驗算。</div></details>
+  </div>
+
+  <h3>7.4 情境應用題</h3>
+  <div class="quiz">
+    <p class="q">1. 電商想把 50 萬名顧客分群做行銷，資料有年齡、年消費金額（數值）、會員等級（銅／銀／金）、居住縣市（名目）。你會怎麼處理相異度與選演算法？</p>
+    <details class="answer"><summary>看解答</summary><div>屬性是混合型：數值先正規化（否則消費金額主導），會員等級當順序屬性轉成 0、0.5、1，縣市當名目（相同 0、不同 1），用 Gower 距離合併。50 萬筆用 PAM 太慢，可用 CLARA 抽樣，或把類別 one-hot 後用 K-means／K-prototypes；K 用手肘法或輪廓係數在幾個候選值中挑，最後還要看各群能不能解釋、能不能做成行銷方案。</div></details>
+  </div>
+
+  <h2 id="cheat">8. 一頁速記</h2>
+  <ol>
+    <li>分群：群內相似、群間不相似；非監督式；沒有放諸四海皆準的最佳解，看任務有沒有用。</li>
+    <li>群的四種觀念：分離良好、原型式（centroid／medoid）、連續性（連通）、密度式。</li>
+    <li>資料矩陣 n × p（two-mode）；相異度矩陣 n × n（one-mode，對稱、對角線 0）。</li>
+    <li>名目 (p − m)/p；對稱二元 (r + s)/(q + r + s + t)；非對稱二元 (r + s)/(q + r + s)。</li>
+    <li>Minkowski：h = 1 曼哈頓、2 歐氏、∞ 上確界。順序：\(z = (r - 1)/(M - 1)\)。混合：Gower 加權平均（講義例 0.849）。</li>
+    <li>四大方法：分割式、階層式、密度式、模型式。</li>
+    <li>K-means：初始中心 → 分配 → 更新平均 → 直到不變；O(nKdt)；區域最小值、要給 K、怕離群值、找不到非凸群。</li>
+    <li>K-means++：下一個中心的機率 ∝ \(D(x)^2\)。K-medoids（PAM：BUILD + SWAP；CLARA：抽樣）、K-medians（中位數、L1）、K-modes（眾數、類別）。</li>
+    <li>階層式：凝聚（常用）／分裂；不用給 K、合併不能反悔；連結：單一 min、完全 max、平均、中心、Ward（ΔSSE）。</li>
+    <li>講義矩陣：單一連結 → {1,2,4} | {3,5}（2.0）；完全連結 → {1,4} | {2,3,5}（4.4）。</li>
+  </ol>
+
+  <footer>講義：DM_week11.pdf（2026/11/20）</footer>
+</main>
+</div>
+</body>
+</html>

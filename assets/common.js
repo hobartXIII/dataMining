@@ -9,6 +9,11 @@
     { id: 'w4', no: 'W4', title: '頻繁樣式探勘與 Apriori', desc: '支持度、信賴度、閉合與極大頻繁項目集、Apriori 連接與剪枝、規則產生', done: true },
     { id: 'w6', no: 'W6', title: 'Apriori 改良與 FP-Growth', desc: 'DHP 雜湊、交易縮減、分割、抽樣與負邊界、FP-tree、FP-Growth', done: true },
     { id: 'w7', no: 'W7', title: '分類與決策樹', desc: '訓練／驗證／測試集、決策樹歸納、熵與資訊增益、增益比、Gini 不純度', done: true },
+    { id: 'w9', no: 'W9', title: 'k-NN、線性分類器與集成', desc: '惰性學習、k-NN、案例式推理、邏輯斯迴歸、SVM 與核函數、Bagging、Boosting', done: true },
+    { id: 'w10', no: 'W10', title: '分類實務與 LIBSVM', desc: '特徵選取、過度配適、混淆矩陣、F1、ROC／AUC、交叉驗證、類別不平衡、LIBSVM', done: true },
+    { id: 'w11', no: 'W11', title: '分群', desc: '相異度、K-means、K-means++、K-medoids、階層式分群與連結準則', done: true },
+    { id: 'rec', no: '推薦', title: '推薦系統', desc: '內容式過濾、協同過濾、Pearson 相關、矩陣分解、冷啟動、跨領域推薦', done: true },
+    { id: 'sna', no: '社群', title: '社群網路探勘', desc: '中心性、社群偵測、模組度、連結預測、LTM／ICM、傳染病模型', done: true },
   ];
   // 首頁倒數：考試與作業截止日
   const EXAMS = [
