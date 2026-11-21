@@ -87,6 +87,7 @@
     const prefix = inChapter ? '../' : '';
     const nav = el('nav', { class: 'chapnav', 'aria-label': '週次' });
     nav.append(el('a', { href: prefix + 'index.html', text: '首頁', class: current === 'home' ? 'active' : '' }));
+    nav.append(el('a', { href: prefix + 'chapters/exam.html', text: '期中考', title: '期中考重點整理', class: current === 'exam' ? 'active' : '' }));
     for (const c of CHAPTERS) {
       if (!c.done) continue;
       nav.append(el('a', {
